@@ -1,2 +1,17 @@
+<<<<<<< HEAD
 xcuserdata/
 *.xcuserstate
+=======
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcshareddata/
+*.xccheckout
+*.xcscmblueprint
+>>>>>>> NewBranch

@@ -23,17 +23,23 @@ struct SeafarersListView: View {
             List {
                 ForEach(month.seafarers) { seafarer in
                     VStack(alignment: .leading) {
-                        Text("DEBUG: \(seafarer.name), distributions count: \(seafarer.distributions.count)")
-                            .font(.caption)
-                            .foregroundColor(.red)
                         NavigationLink(destination: SeafarerDetailView(seafarer: seafarer, inventoryItems: month.inventoryItems)) {
-                            VStack(alignment: .leading) {
-                                Text(seafarer.name)
-                                    .font(.headline)
-                                Text("ID: \(seafarer.displayID), Rank: \(seafarer.rank)")
-                                    .font(.subheadline)
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text("\(seafarer.displayID).")
+                                            .bold()
+                                        Text(seafarer.name)
+                                            .bold()
+                                    }
+                                    Text(seafarer.rank)
+                                        .font(.subheadline)
+                                }
+                                Spacer()
                                 Text("Spent: €\(seafarer.totalSpent, specifier: "%.2f")")
-                                    .font(.caption)
+                                    .font(.headline)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(alignment: .center)
                             }
                         }
                     }
@@ -42,17 +48,7 @@ struct SeafarersListView: View {
             }
             .navigationTitle("Seafarers")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        appState.selectedMonthID = nil
-                    }) {
-                        HStack {
-                            Image(systemName: "chevron.left")
-                            Text("Month")
-                        }
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                    ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         showingAddSeafarer = true
                     }) {
