@@ -14,7 +14,7 @@ struct BondStoreApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MonthSelectorView()
                 .environmentObject(appState)
         }
         .modelContainer(for: [

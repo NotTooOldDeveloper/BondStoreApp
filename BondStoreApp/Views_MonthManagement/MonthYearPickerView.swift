@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct MonthYearPickerView: View {
     var onSelect: (String) -> Void
@@ -18,27 +19,57 @@ struct MonthYearPickerView: View {
     let years = Array(2025...2050)
     let months = Array(1...12)
 
+    @State private var showDuplicateAlert = false
+
+    @Query(sort: \MonthlyData.monthID) private var monthlyDataList: [MonthlyData]
+    private var existingMonths: [String] {
+        monthlyDataList.map { $0.monthID }
+    }
+
     var body: some View {
-        NavigationView {
-            Form {
-                Picker("Year", selection: $selectedYear) {
-                    ForEach(years, id: \.self) { year in
-                        Text("\(year)").tag(year)
+        NavigationStack {
+            VStack(spacing: 30) {
+                HStack(spacing: 20) {
+                    Picker("Year", selection: $selectedYear) {
+                        ForEach(years, id: \.self) { year in
+                            Text("\(year)").tag(year)
+                        }
                     }
-                }
-                Picker("Month", selection: $selectedMonth) {
-                    ForEach(months, id: \.self) { month in
-                        Text(String(format: "%02d", month)).tag(month)
+                    .pickerStyle(WheelPickerStyle())
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+
+                    Picker("Month", selection: $selectedMonth) {
+                        ForEach(months, id: \.self) { month in
+                            Text(String(format: "%02d", month)).tag(month)
+                        }
                     }
+                    .pickerStyle(WheelPickerStyle())
+                    .frame(maxWidth: .infinity)
+                    .clipped()
                 }
+                .frame(height: 150)
+
+                Text("Selected: \(formattedMonthYearString(from: String(format: "%04d-%02d", selectedYear, selectedMonth)))")
+                    .font(.headline)
+                    .foregroundColor(.blue)
+
+                Spacer()
             }
+            .padding()
+            .background(Color(.systemGroupedBackground))
+            .cornerRadius(12)
             .navigationTitle("Select Month & Year")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Select") {
                         let monthString = String(format: "%04d-%02d", selectedYear, selectedMonth)
-                        onSelect(monthString)
-                        dismiss()
+                        if existingMonths.contains(monthString) {
+                            showDuplicateAlert = true
+                        } else {
+                            onSelect(monthString)
+                            dismiss()
+                        }
                     }
                 }
                 ToolbarItem(placement: .cancellationAction) {
@@ -47,6 +78,23 @@ struct MonthYearPickerView: View {
                     }
                 }
             }
+            .alert("Month Already Exists", isPresented: $showDuplicateAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The month you are trying to create already exists. Please select a different one.")
+            }
         }
     }
+}
+
+func formattedMonthYearString(from rawString: String) -> String {
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy-MM"
+
+    guard let date = dateFormatter.date(from: rawString) else {
+        return rawString
+    }
+
+    dateFormatter.dateFormat = "LLLL yyyy"
+    return dateFormatter.string(from: date)
 }

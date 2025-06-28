@@ -15,6 +15,7 @@ struct MonthSelectorView: View {
     @State private var availableMonths: [String] = []
     @State private var selectedMonth: String?
     @State private var showingMonthPicker = false
+    @State private var navigateToMainTab = false
     
     func createNewMonth(_ month: String) {
         Task {
@@ -64,30 +65,79 @@ struct MonthSelectorView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
                 List {
                     ForEach(availableMonths, id: \.self) { month in
-                        Button {
-                            selectMonth(month)
-                        } label: {
-                            Text(month)
+                        HStack(spacing: 12) {
+                            Text(formattedMonthYear(from: month))
+                                .foregroundColor(.primary)
+                                .font(selectedMonth == month ? .title3.bold() : .body)
+                                .padding(.vertical, 12)
+                                .padding(.horizontal)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(selectedMonth == month ? Color.blue.opacity(0.2) : Color.gray.opacity(0.2))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(selectedMonth == month ? Color.blue : .clear, lineWidth: 2)
+                                        )
+                                )
+                                .onTapGesture {
+                                    withAnimation(.easeInOut) {
+                                        selectedMonth = month
+                                    }
+                                }
+
+                            ZStack {
+                                if selectedMonth == month {
+                                    Button(action: {
+                                        withAnimation {
+                                            appState.selectedMonthID = month
+                                            navigateToMainTab = true
+                                        }
+                                    }) {
+                                        Text("Enter")
+                                            .frame(width: 80, height: 44)
+                                            .background(Color.blue)
+                                            .foregroundColor(.white)
+                                            .cornerRadius(8)
+                                    }
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    .id("Enter-\(month)") // Unique ID for proper animation
+                                }
+                            }
+                            .animation(.easeOut(duration: 0.4), value: selectedMonth)
+
                         }
+                        .animation(.easeInOut(duration: 0.4), value: selectedMonth)
+                        .padding(.horizontal)
+                        .scrollContentBackground(.hidden) // hides List’s scroll area background
+
                     }
                     .onDelete(perform: deleteMonths)
+                    
+                    .listStyle(PlainListStyle())
+                    .scrollContentBackground(.hidden)
+                    .listRowSeparator(.hidden)
                 }
-                Button("Change Month") {
+                .scrollContentBackground(.hidden)
+                .listRowSeparator(.hidden)
+                .listStyle(PlainListStyle())
+                Button(action: {
                     showingMonthPicker = true
-                }
-                .padding()
-
-                Button("Enter Bond Store") {
-                    if let selected = selectedMonth ?? appState.selectedMonthID {
-                        appState.selectedMonthID = selected
+                }) {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add New Month")
+                            .fontWeight(.semibold)
                     }
+                    .foregroundColor(.blue)
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(10)
                 }
-                .disabled(selectedMonth == nil && appState.selectedMonthID == nil)
-                .padding()
             }
             .navigationTitle("Select Month")
             .sheet(isPresented: $showingMonthPicker) {
@@ -124,8 +174,13 @@ struct MonthSelectorView: View {
                     }
                 )
             }
+            .navigationDestination(isPresented: $navigateToMainTab) {
+                MainTabView()
+                    .environmentObject(appState)
+            }
         }
     }
+
 
     func loadAvailableMonths() {
         do {
@@ -168,4 +223,16 @@ struct MonthSelectorView: View {
             }
         }
     }
+}
+
+func formattedMonthYear(from rawString: String) -> String {
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy-MM"
+
+    guard let date = dateFormatter.date(from: rawString) else {
+        return rawString
+    }
+
+    dateFormatter.dateFormat = "LLLL yyyy"
+    return dateFormatter.string(from: date)
 }
