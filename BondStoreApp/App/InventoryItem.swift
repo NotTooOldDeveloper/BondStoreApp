@@ -15,16 +15,18 @@ class InventoryItem {
     var quantity: Int
     var pricePerUnit: Double
     var barcode: String?
+    var receivedDate: Date
     
 
     @Relationship var supplies: [SupplyRecord] = []
 
-    init(name: String, quantity: Int, pricePerUnit: Double, barcode: String? = nil) {
+    init(name: String, quantity: Int, pricePerUnit: Double, barcode: String? = nil, receivedDate: Date = Date()) {
         self.id = UUID()
         self.name = name
         self.quantity = quantity
         self.pricePerUnit = pricePerUnit
         self.barcode = barcode
+        self.receivedDate = receivedDate
     }
 }
 
@@ -34,7 +36,8 @@ extension InventoryItem {
             name: self.name,
             quantity: self.quantity,
             pricePerUnit: self.pricePerUnit,
-            barcode: self.barcode
+            barcode: self.barcode,
+            receivedDate: self.receivedDate
         )
         clone.supplies = self.supplies.map { $0.deepCopy(for: clone) }
         return clone

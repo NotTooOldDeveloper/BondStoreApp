@@ -22,13 +22,15 @@ struct InventoryListView: View {
     @State private var itemQuantity = ""
     @State private var itemBarcode = ""
     @State private var itemPrice = ""
+    @State private var itemReceivedDate = Date()
 
     @State private var isShowingScanner = false
+    @State private var showingInventoryBarcodeScanner = false
 
     var body: some View {
         NavigationView {
             List {
-                ForEach(month.inventoryItems) { item in
+                ForEach(month.inventoryItems, id: \.id) { item in
                     HStack {
                         VStack(alignment: .leading) {
                             Text(item.name)
@@ -47,14 +49,21 @@ struct InventoryListView: View {
             }
             .navigationTitle("Inventory")
             .toolbar {
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
                     Button {
                         startAdding()
                     } label: {
                         HStack {
                             Image(systemName: "plus")
                             Text("Add Item")
+                        }
+                    }
+                    Button {
+                        showingInventoryBarcodeScanner = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "barcode.viewfinder")
+                            Text("Add via Barcode Scanner")
                         }
                     }
                 }
@@ -67,6 +76,7 @@ struct InventoryListView: View {
                             .keyboardType(.numberPad)
                         TextField("Price", text: $itemPrice)
                             .keyboardType(.decimalPad)
+                        DatePicker("Date Received", selection: $itemReceivedDate, displayedComponents: .date)
                         HStack {
                             TextField("Barcode", text: $itemBarcode)
                             Button("Scan") {
@@ -96,6 +106,9 @@ struct InventoryListView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showingInventoryBarcodeScanner) {
+                InventoryBarcodeScannerView(month: month, existingBarcodes: month.inventoryItems.compactMap { $0.barcode ?? "" })
+            }
         }
     }
 
@@ -109,6 +122,7 @@ struct InventoryListView: View {
         itemQuantity = ""
         itemBarcode = ""
         itemPrice = ""
+        itemReceivedDate = Date() // initialize to current date
         showingAddEditSupply = true
     }
 
@@ -118,6 +132,7 @@ struct InventoryListView: View {
         itemQuantity = String(item.quantity)
         itemBarcode = item.barcode ?? ""
         itemPrice = String(format: "%.2f", item.pricePerUnit)
+        itemReceivedDate = item.receivedDate // load existing date
         showingAddEditSupply = true
     }
 
@@ -129,8 +144,9 @@ struct InventoryListView: View {
             item.quantity = qty
             item.pricePerUnit = price
             item.barcode = itemBarcode.isEmpty ? nil : itemBarcode
+            item.receivedDate = itemReceivedDate
         } else {
-            let newItem = InventoryItem(name: itemName, quantity: qty, pricePerUnit: price)
+            let newItem = InventoryItem(name: itemName, quantity: qty, pricePerUnit: price, receivedDate: itemReceivedDate)
             newItem.barcode = itemBarcode.isEmpty ? nil : itemBarcode
             modelContext.insert(newItem)
             month.inventoryItems.append(newItem)
@@ -143,9 +159,18 @@ struct InventoryListView: View {
     }
 
     private func deleteItems(at offsets: IndexSet) {
-        for index in offsets {
-            let item = month.inventoryItems[index]
-            modelContext.delete(item)
+        DispatchQueue.main.async {
+            for index in offsets {
+                let item = month.inventoryItems[index]
+                modelContext.delete(item)
+            }
+            month.inventoryItems.remove(atOffsets: offsets)
+
+            do {
+                try modelContext.save()
+            } catch {
+                print("Failed to save context after deleting items: \(error)")
+            }
         }
     }
 }
@@ -256,3 +281,4 @@ struct BasicBarcodeScannerView: UIViewControllerRepresentable {
         }
     }
 }
+
