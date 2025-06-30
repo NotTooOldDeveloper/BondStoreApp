@@ -49,22 +49,22 @@ struct InventoryListView: View {
             }
             .navigationTitle("Inventory")
             .toolbar {
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    Button {
-                        startAdding()
-                    } label: {
-                        HStack {
-                            Image(systemName: "plus")
-                            Text("Add Item")
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button {
+                            startAdding()
+                        } label: {
+                            Label("Add Item", systemImage: "plus")
                         }
-                    }
-                    Button {
-                        showingInventoryBarcodeScanner = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "barcode.viewfinder")
-                            Text("Add via Barcode Scanner")
+
+                        Button {
+                            showingInventoryBarcodeScanner = true
+                        } label: {
+                            Label("Add via Barcode Scanner", systemImage: "barcode.viewfinder")
                         }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .imageScale(.large)
                     }
                 }
             }

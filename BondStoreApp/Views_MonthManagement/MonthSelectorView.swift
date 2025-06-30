@@ -36,9 +36,11 @@ struct MonthSelectorView: View {
                     // Step 1: Copy inventory and build mapping
                     var inventoryMap: [UUID: InventoryItem] = [:]
                     for oldItem in prev.inventoryItems {
-                        let newItem = oldItem.deepCopy()
-                        inventoryMap[oldItem.id] = newItem
-                        newMonthData.inventoryItems.append(newItem)
+                        if oldItem.quantity > 0 {
+                            let newItem = oldItem.deepCopy()
+                            inventoryMap[oldItem.id] = newItem
+                            newMonthData.inventoryItems.append(newItem)
+                        }
                     }
 
                     // Step 2: Copy seafarers and their distributions using inventory map
