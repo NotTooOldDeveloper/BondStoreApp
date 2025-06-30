@@ -100,7 +100,7 @@ struct InventoryListView: View {
                     }
                 }
                 .sheet(isPresented: $isShowingScanner) {
-                    BarcodeScannerView { code in
+                    BasicBarcodeScannerView { code in
                         itemBarcode = code
                         isShowingScanner = false
                     }
@@ -164,7 +164,7 @@ struct InventoryListView: View {
 
 // MARK: - BarcodeScannerView
 
-struct BarcodeScannerView: UIViewControllerRepresentable {
+struct BasicBarcodeScannerView: UIViewControllerRepresentable {
     var completion: (String) -> Void
 
     func makeUIViewController(context: Context) -> ScannerViewController {

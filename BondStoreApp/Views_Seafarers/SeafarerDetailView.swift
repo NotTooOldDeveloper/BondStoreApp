@@ -5,8 +5,6 @@
 //  Created by Valentyn on 26.06.25.
 //
 
-
-
 import SwiftUI
 import SwiftData
 
@@ -15,6 +13,7 @@ struct SeafarerDetailView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var showingAddDistribution = false
+    @State private var showingBarcodeScanner = false
 
     @State private var isEditingSeafarer = false
     @State private var editName = ""
@@ -36,7 +35,7 @@ struct SeafarerDetailView: View {
     init(seafarer: Seafarer, inventoryItems: [InventoryItem]) {
         self._seafarer = Bindable(wrappedValue: seafarer)
         self.inventoryItems = inventoryItems
-        self._selectedItem = State(initialValue: inventoryItems.first)
+        self._selectedItem = State(initialValue: nil)
     }
 
     var body: some View {
@@ -139,24 +138,27 @@ struct SeafarerDetailView: View {
         .padding()
         .toolbar {
             ToolbarItem(placement: .bottomBar) {
-                Button(action: { showingAddDistribution = true }) {
-                    HStack {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 24))
-                        Text("Add Distribution")
-                            .fontWeight(.semibold)
+                HStack {
+                    Spacer()
+                    Button(action: { showingAddDistribution = true }) {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 24))
+                            Text("Add Distribution")
+                                .fontWeight(.semibold)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                        .shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                        .scaleEffect(1.0)
+                        .animation(.easeInOut(duration: 0.2), value: showingAddDistribution)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
-                    .shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4)
-                    .scaleEffect(1.0)
-                    .animation(.easeInOut(duration: 0.2), value: showingAddDistribution)
+                    Spacer()
                 }
             }
-            
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Edit") {
                     editID = seafarer.displayID
@@ -169,13 +171,13 @@ struct SeafarerDetailView: View {
         .sheet(isPresented: $showingAddDistribution) {
             NavigationView {
                 Form {
-                    Picker("Item", selection: $selectedItem) {
-                        ForEach(inventoryItems, id: \.id) { item in
-                            Text(item.name).tag(Optional(item))
+                    Section(header: Text("Select Item")) {
+                        Picker("Item", selection: $selectedItem) {
+                            Text("Select an item").tag(Optional<InventoryItem>(nil))
+                            ForEach(inventoryItems, id: \.id) { item in
+                                Text(item.name).tag(Optional(item))
+                            }
                         }
-                    }
-                    .onChange(of: selectedItem) { _, selectedItem in
-                        print("Selected item changed to: \(selectedItem?.name ?? "nil")")
                     }
 
                     TextField("Quantity", text: $quantityString)
@@ -223,11 +225,42 @@ struct SeafarerDetailView: View {
                             Int(quantityString) == nil ||
                             Int(quantityString)! <= 0
                         )
-
                     }
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") {
                             showingAddDistribution = false
+                        }
+                    }
+                    ToolbarItem(placement: .bottomBar) {
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                showingBarcodeScanner = true
+                            }) {
+                                HStack {
+                                    Image(systemName: "barcode.viewfinder")
+                                    Text("Scan Barcode")
+                                        .fontWeight(.semibold)
+                                }
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                                .background(Color.green)
+                                .foregroundColor(.white)
+                                .cornerRadius(10)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                .sheet(isPresented: $showingBarcodeScanner) {
+                    BarcodeScannerView(
+                        dismissBoth: $showingAddDistribution,
+                        inventoryItems: inventoryItems
+                    ) { scannedDistributions in
+                        for dist in scannedDistributions {
+                            dist.seafarer = seafarer
+                            seafarer.distributions.append(dist)
+                            seafarer.totalSpent += Double(dist.quantity) * dist.unitPrice
                         }
                     }
                 }
