@@ -36,57 +36,119 @@ struct SeafarerDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(seafarer.name)
-                .font(.title)
-                .bold()
-            Text("ID: \(seafarer.displayID)")
-            Text("Rank: \(seafarer.rank)")
-            Text("Total Spent: €\(seafarer.totalSpent, specifier: "%.2f")")
+            VStack(spacing: 4) {
+                Text(seafarer.name)
+                    .font(.largeTitle)
+                    .bold()
+                    .multilineTextAlignment(.center)
+                Text(seafarer.rank)
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
+            
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.blue.opacity(0.1))
+                .overlay(
+                    HStack {
+                        Text("Total spent in \(formattedMonthName(from: Date()))")
+                            .font(.body.bold())
+                            .foregroundColor(.black)
+                        Spacer()
+                        Text("$\(seafarer.totalSpent, specifier: "%.2f")")
+                            .font(.title3.bold())
+                            .foregroundColor(.blue)
+                    }
+                    .padding(.horizontal)
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .padding(.vertical, 0)
 
-            Divider()
-
-            Text("Distributions:")
-                .font(.headline)
-
+            
+            
             if seafarer.distributions.isEmpty {
                 Text("No distributions yet.")
                     .foregroundColor(.secondary)
                     .italic()
             } else {
-                List {
-                    ForEach(seafarer.distributions) { distribution in
-                        VStack(alignment: .leading) {
-                            Text("\(distribution.itemName) x\(distribution.quantity)")
-                            Text("Date: \(distribution.date.formatted(date: .abbreviated, time: .omitted))")
-                                .font(.caption)
-                            Text("Total: €\(distribution.total, specifier: "%.2f")")
-                                .font(.caption)
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(seafarer.distributions) { dist in
+                            VStack(alignment: .leading, spacing: 6) {
+                                
+                                HStack {
+                                    Text(dist.itemName)
+                                        .font(.headline)
+                                        .bold()
+                                    Spacer()
+                                    Text("Total: $\(dist.total, specifier: "%.2f")")
+                                        .bold()
+                                        .foregroundColor(Color.black)
+                                }
+                                
+                                HStack {
+                                    Text(dist.date.formatted(date: .abbreviated, time: .omitted))
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("Qty: \(dist.quantity)")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(10)
                         }
                     }
+                    .padding(.top, 10) // Add top padding to shift the content slightly downward
                 }
-                .frame(maxHeight: 200)
+                .mask(
+                    LinearGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black, location: 0.03),
+                            .init(color: .black, location: 0.97),
+                            .init(color: .clear, location: 1)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             }
 
             Spacer()
 
-            Button("Add Distribution") {
-                showingAddDistribution = true
-                if let firstItem = inventoryItems.first {
-                    selectedItem = firstItem
-                }
-                quantityString = ""
-                selectedDate = Date()
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top)
+            
         }
         .padding()
-        .navigationTitle("Seafarer Detail")
         .toolbar {
+            ToolbarItem(placement: .bottomBar) {
+                Button(action: { showingAddDistribution = true }) {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 24))
+                        Text("Add Distribution")
+                            .fontWeight(.semibold)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+                    .shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                    .scaleEffect(1.0)
+                    .animation(.easeInOut(duration: 0.2), value: showingAddDistribution)
+                }
+            }
+            
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Edit") {
-                    editName = seafarer.name
                     editID = seafarer.displayID
+                    editName = seafarer.name
                     editRank = seafarer.rank
                     isEditingSeafarer = true
                 }
@@ -185,4 +247,10 @@ struct SeafarerDetailView: View {
             }
         }
     }
+}
+
+private func formattedMonthName(from date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "LLLL"
+    return formatter.string(from: date)
 }

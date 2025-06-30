@@ -36,7 +36,7 @@ struct SeafarersListView: View {
                                         .font(.subheadline)
                                 }
                                 Spacer()
-                                Text("Spent: €\(seafarer.totalSpent, specifier: "%.2f")")
+                                Text("Spent: $\(seafarer.totalSpent, specifier: "%.2f")")
                                     .font(.headline)
                                     .multilineTextAlignment(.trailing)
                                     .frame(alignment: .center)
