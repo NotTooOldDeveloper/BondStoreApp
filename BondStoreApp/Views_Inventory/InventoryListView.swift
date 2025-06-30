@@ -34,7 +34,6 @@ struct InventoryListView: View {
                             Text(item.name)
                                 .font(.headline)
                             Text("Quantity: \(item.quantity)")
-                            Text("Barcode: \(itemBarcodeFor(item))")
                         }
                         Spacer()
                         Text(String(format: "Price: €%.2f", item.pricePerUnit))
@@ -48,16 +47,7 @@ struct InventoryListView: View {
             }
             .navigationTitle("Inventory")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: {
-                        appState.selectedMonthID = nil
-                    }) {
-                        HStack {
-                            Image(systemName: "chevron.left")
-                            Text("Month")
-                        }
-                    }
-                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         startAdding()

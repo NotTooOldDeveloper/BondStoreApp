@@ -53,7 +53,7 @@ struct SeafarerDetailView: View {
             .multilineTextAlignment(.center)
             
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.blue.opacity(0.1))
+                .fill(Color.blue.opacity(0.3))
                 .overlay(
                     HStack {
                         Text("Total spent in \(formattedMonthName(from: Date()))")
@@ -62,7 +62,7 @@ struct SeafarerDetailView: View {
                         Spacer()
                         Text("$\(seafarer.totalSpent, specifier: "%.2f")")
                             .font(.title3.bold())
-                            .foregroundColor(.blue)
+                            .foregroundColor(Color(red: 0.12, green: 0.11, blue: 0.78))
                     }
                     .padding(.horizontal)
                 )
