@@ -25,6 +25,11 @@ struct SeafarerDetailView: View {
     @State private var selectedItem: InventoryItem?
     @State private var quantityString = ""
     @State private var selectedDate = Date()
+    
+    @State private var distributionToEdit: Distribution?
+    @State private var editedQuantityString = ""
+    @State private var editedDate = Date()
+    @State private var showInventoryAlert = false
 
     var inventoryItems: [InventoryItem]
 
@@ -53,7 +58,7 @@ struct SeafarerDetailView: View {
                 .overlay(
                     HStack {
                         Text("Total spent in \(formattedMonthName(from: Date()))")
-                            .font(.body.bold())
+                            .font(.title3.bold())
                             .foregroundColor(.black)
                         Spacer()
                         Text("$\(seafarer.totalSpent, specifier: "%.2f")")
@@ -73,51 +78,58 @@ struct SeafarerDetailView: View {
                     .foregroundColor(.secondary)
                     .italic()
             } else {
-                ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(seafarer.distributions) { dist in
-                            VStack(alignment: .leading, spacing: 6) {
-                                
-                                HStack {
-                                    Text(dist.itemName)
-                                        .font(.headline)
-                                        .bold()
-                                    Spacer()
-                                    Text("Total: $\(dist.total, specifier: "%.2f")")
-                                        .bold()
-                                        .foregroundColor(Color.black)
-                                }
-                                
-                                HStack {
-                                    Text(dist.date.formatted(date: .abbreviated, time: .omitted))
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    Text("Qty: \(dist.quantity)")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
+                List {
+                    ForEach(seafarer.distributions) { dist in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(dist.inventoryItem?.name ?? dist.itemName)
+                                    .font(.headline)
+                                    .bold()
+                                Spacer()
+                                Text("Total: $\(dist.total, specifier: "%.2f")")
+                                    .bold()
+                                    .foregroundColor(Color.black)
                             }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(10)
+                            
+                            HStack {
+                                Text(dist.date.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text("Qty: \(dist.quantity)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
                         }
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0)) // reduce vertical spacing
+                        .swipeActions(edge: .trailing) {
+                            Button("Edit") {
+                                distributionToEdit = dist
+                                editedQuantityString = "\(dist.quantity)"
+                                editedDate = dist.date
+                            }
+                            .tint(.blue)
+
+                            Button(role: .destructive) {
+                                dist.inventoryItem?.quantity += dist.quantity
+                                seafarer.totalSpent -= Double(dist.quantity) * dist.unitPrice
+                                if let index = seafarer.distributions.firstIndex(of: dist) {
+                                    seafarer.distributions.remove(at: index)
+                                    modelContext.delete(dist)
+                                }
+                            } label: {
+                                Text("Delete")
+                            }
+                        }
+                        .listRowSeparator(.hidden)
                     }
-                    .padding(.top, 10) // Add top padding to shift the content slightly downward
                 }
-                .mask(
-                    LinearGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black, location: 0.03),
-                            .init(color: .black, location: 0.97),
-                            .init(color: .clear, location: 1)
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .listStyle(PlainListStyle())
             }
 
             Spacer()
@@ -221,11 +233,73 @@ struct SeafarerDetailView: View {
                 }
             }
         }
+        .sheet(item: $distributionToEdit) { dist in
+            NavigationView {
+                Form {
+                    Section {
+                        HStack {
+                            Text(dist.inventoryItem?.name ?? dist.itemName)
+                                .font(.headline)
+                        }
+                    }
+                    DatePicker(selection: $editedDate, displayedComponents: .date) {
+                        Text("Date")
+                            .font(.headline)
+                    }
+                    .frame(height: 50)
+                    HStack {
+                        Text("Quantity")
+                            .font(.headline)
+                        Spacer()
+                        Picker("Quantity", selection: $editedQuantityString) {
+                            ForEach(1..<101) { qty in
+                                Text("\(qty)").tag("\(qty)")
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .frame(width: 100, height: 50)
+                        .clipped()
+                    }
+                }
+                .navigationTitle("Edit Distribution")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            guard let newQuantity = Int(editedQuantityString), newQuantity > 0 else {
+                                return
+                            }
+                            let quantityDifference = newQuantity - dist.quantity
+                            if let inventoryItem = dist.inventoryItem {
+                                if inventoryItem.quantity < quantityDifference {
+                                    showInventoryAlert = true
+                                    return
+                                }
+                                inventoryItem.quantity -= quantityDifference
+                            }
+                            seafarer.totalSpent += Double(quantityDifference) * dist.unitPrice
+                            dist.quantity = newQuantity
+                            dist.date = editedDate
+                            distributionToEdit = nil
+                        }
+                    }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            distributionToEdit = nil
+                        }
+                    }
+                }
+            }
+            .alert("Not enough inventory", isPresented: $showInventoryAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("You don't have enough of this item in inventory to increase the quantity.")
+            }
+        }
         .sheet(isPresented: $isEditingSeafarer) {
             NavigationView {
                 Form {
-                    TextField("Name", text: $editName)
                     TextField("ID", text: $editID)
+                    TextField("Name", text: $editName)
                     TextField("Rank", text: $editRank)
                 }
                 .navigationTitle("Edit Seafarer")
