@@ -207,6 +207,7 @@ struct SeafarerDetailView: View {
                                 inventoryItem: selectedItem
                             
                             )
+                            print("🪪 Creating distribution for item: \(selectedItem.name), originalItemID: \(selectedItem.originalItemID?.uuidString ?? "nil")")
                             modelContext.insert(distribution)
 
                             // Link distribution to seafarer

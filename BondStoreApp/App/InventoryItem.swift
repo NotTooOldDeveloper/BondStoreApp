@@ -16,6 +16,8 @@ class InventoryItem {
     var pricePerUnit: Double
     var barcode: String?
     var receivedDate: Date
+    var originalItemID: UUID?
+
     
 
     @Relationship var supplies: [SupplyRecord] = []
@@ -39,6 +41,7 @@ extension InventoryItem {
             barcode: self.barcode,
             receivedDate: self.receivedDate
         )
+        clone.originalItemID = self.originalItemID ?? self.id
         clone.supplies = self.supplies.map { $0.deepCopy(for: clone) }
         return clone
     }
