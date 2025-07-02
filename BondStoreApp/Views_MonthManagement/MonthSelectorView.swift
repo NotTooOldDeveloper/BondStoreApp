@@ -142,6 +142,7 @@ struct MonthSelectorView: View {
                     .cornerRadius(10)
                 }
             }
+            
             .navigationTitle("Select Month")
             .sheet(isPresented: $showingMonthPicker) {
                 MonthYearPickerView { month in

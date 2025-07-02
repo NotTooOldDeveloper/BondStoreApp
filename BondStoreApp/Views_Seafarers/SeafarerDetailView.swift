@@ -17,10 +17,10 @@ struct SeafarerDetailView: View {
 
     @State private var isEditingSeafarer = false
     @State private var editName = ""
-    @State private var editID = ""
+    @State private var editID = "" // This var is correctly used for editing
     @State private var editRank = ""
 
-    // Form state
+    // Form state for new distribution
     @State private var selectedItem: InventoryItem?
     @State private var quantityString = ""
     @State private var selectedDate = Date()
@@ -39,8 +39,8 @@ struct SeafarerDetailView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(spacing: 4) {
+        VStack(alignment: .leading) { // Removed 'spacing: 16'
+            VStack { // Removed 'spacing: 4'
                 Text(seafarer.name)
                     .font(.largeTitle)
                     .bold()
@@ -50,76 +50,75 @@ struct SeafarerDetailView: View {
                     .foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity)
-            .multilineTextAlignment(.center)
-            
+           
+
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color.blue.opacity(0.3))
                 .overlay(
                     HStack {
                         Text("Total spent in \(formattedMonthName(from: Date()))")
                             .font(.title3.bold())
-                            .foregroundColor(.black)
+                            .foregroundColor(Color("Name1"))
                         Spacer()
                         Text("$\(seafarer.totalSpent, specifier: "%.2f")")
                             .font(.title3.bold())
-                            .foregroundColor(Color(red: 0.12, green: 0.11, blue: 0.78))
+                            .foregroundColor(Color("Sum"))
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal) // Retained horizontal padding for internal content readability
                 )
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
-                .padding(.vertical, 0)
+                // Removed .padding(.vertical, 0) as it adds 0 padding which is effectively no padding.
 
-            
-            
+            // The main list of distributions
             if seafarer.distributions.isEmpty {
                 Text("No distributions yet.")
                     .foregroundColor(.secondary)
                     .italic()
             } else {
                 List {
-                    ForEach(seafarer.distributions) { dist in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text(dist.inventoryItem?.name ?? dist.itemName)
-                                    .font(.headline)
-                                    .bold()
-                                Spacer()
-                                Text("Total: $\(dist.total, specifier: "%.2f")")
-                                    .bold()
-                                    .foregroundColor(Color.black)
+                    // Sorting distributions by date, as discussed previously
+                    ForEach(seafarer.distributions.sorted(using: SortDescriptor(\.date)), id: \.id) { dist in
+                        Button {
+                            distributionToEdit = dist
+                            editedQuantityString = "\(dist.quantity)"
+                            editedDate = dist.date
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text(dist.inventoryItem?.name ?? dist.itemName)
+                                        .font(.headline)
+                                        .bold()
+                                    Spacer()
+                                    Text("Total: $\(dist.total, specifier: "%.2f")")
+                                        .bold()
+                                        .foregroundColor(Color("Sum"))
+                                }
+                                HStack {
+                                    Text(dist.date.formatted(date: .abbreviated, time: .omitted))
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("Qty: \(dist.quantity)")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
                             }
-                            
-                            HStack {
-                                Text(dist.date.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text("Qty: \(dist.quantity)")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(10)
                         }
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0)) // reduce vertical spacing
+                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                         .swipeActions(edge: .trailing) {
-                            Button("Edit") {
-                                distributionToEdit = dist
-                                editedQuantityString = "\(dist.quantity)"
-                                editedDate = dist.date
-                            }
-                            .tint(.blue)
-
                             Button(role: .destructive) {
                                 dist.inventoryItem?.quantity += dist.quantity
                                 seafarer.totalSpent -= Double(dist.quantity) * dist.unitPrice
                                 if let index = seafarer.distributions.firstIndex(of: dist) {
                                     seafarer.distributions.remove(at: index)
                                     modelContext.delete(dist)
+                                    try? modelContext.save()
                                 }
                             } label: {
                                 Text("Delete")
@@ -132,8 +131,6 @@ struct SeafarerDetailView: View {
             }
 
             Spacer()
-
-            
         }
         .padding()
         .toolbar {
@@ -161,6 +158,7 @@ struct SeafarerDetailView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Edit") {
+                    // Initialize state variables with current seafarer data
                     editID = seafarer.displayID
                     editName = seafarer.name
                     editRank = seafarer.rank
@@ -197,27 +195,29 @@ struct SeafarerDetailView: View {
                                 return
                             }
 
-
                             let distribution = Distribution(
                                 date: selectedDate,
-                                itemName: selectedItem.name,
+                                itemName: selectedItem.name, // Still using snapshot for item name
                                 quantity: qty,
-                                unitPrice: selectedItem.pricePerUnit,
+                                unitPrice: selectedItem.pricePerUnit, // Still using snapshot for unit price
                                 seafarer: seafarer,
                                 inventoryItem: selectedItem
-                            
                             )
                             print("🪪 Creating distribution for item: \(selectedItem.name), originalItemID: \(selectedItem.originalItemID?.uuidString ?? "nil")")
                             modelContext.insert(distribution)
 
-                            // Link distribution to seafarer
-                            seafarer.distributions.append(distribution)
+                            // Link distribution to seafarer (already done by `seafarer: seafarer` in init)
+                            // seafarer.distributions.append(distribution) // This line is not strictly needed if relationship is setup, but doesn't hurt.
 
                             // Update inventory quantity
                             selectedItem.quantity -= qty
 
                             // Update seafarer's total spent
                             seafarer.totalSpent += Double(qty) * selectedItem.pricePerUnit
+                            
+                            // --- BEGIN ADDED SAVE FOR NEW DISTRIBUTION ---
+                            try? modelContext.save() // Save changes to the model context
+                            // --- END ADDED SAVE FOR NEW DISTRIBUTION ---
 
                             showingAddDistribution = false
                         }
@@ -262,7 +262,11 @@ struct SeafarerDetailView: View {
                             dist.seafarer = seafarer
                             seafarer.distributions.append(dist)
                             seafarer.totalSpent += Double(dist.quantity) * dist.unitPrice
+                            modelContext.insert(dist) // Ensure scanned distributions are inserted
                         }
+                        // --- BEGIN ADDED SAVE FOR SCANNED DISTRIBUTIONS ---
+                        try? modelContext.save() // Save all scanned distributions and seafarer updates
+                        // --- END ADDED SAVE FOR SCANNED DISTRIBUTIONS ---
                     }
                 }
             }
@@ -313,6 +317,9 @@ struct SeafarerDetailView: View {
                             seafarer.totalSpent += Double(quantityDifference) * dist.unitPrice
                             dist.quantity = newQuantity
                             dist.date = editedDate
+                            // --- BEGIN ADDED SAVE FOR EDITING DISTRIBUTION ---
+                            try? modelContext.save() // Save changes to the distribution and related models
+                            // --- END ADDED SAVE FOR EDITING DISTRIBUTION ---
                             distributionToEdit = nil
                         }
                     }
@@ -343,6 +350,9 @@ struct SeafarerDetailView: View {
                             seafarer.name = editName
                             seafarer.displayID = editID
                             seafarer.rank = editRank
+                            // --- BEGIN ADDED SAVE FOR EDITING SEAFARER ---
+                            try? modelContext.save() // THIS IS THE CRUCIAL LINE!
+                            // --- END ADDED SAVE FOR EDITING SEAFARER ---
                             isEditingSeafarer = false
                         }
                     }

@@ -34,11 +34,18 @@ struct InventoryListView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(item.name)
-                                .font(.headline)
+                                .font(.system(size: 18))
+                                .bold()
                             Text("Quantity: \(item.quantity)")
                         }
                         Spacer()
-                        Text(String(format: "Price: €%.2f", item.pricePerUnit))
+                        VStack(alignment: .leading) {
+                            Text(String(format: "Price: €%.2f", item.pricePerUnit))
+                                .font(.system(size: 18))
+                                .bold(true)
+                            Text(String(format: "Total: €%.2f", Double(item.quantity) * item.pricePerUnit))
+                                .foregroundStyle(Color.gray)
+                        }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {

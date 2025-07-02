@@ -45,6 +45,8 @@ struct MainTabView: View {
                     Label("Reports", systemImage: "doc.plaintext")
                 }
         }
+        .background(Color("AppBackground"))
+        .ignoresSafeArea(.all) // Ensures it covers the entire screen
         .onAppear {
             DispatchQueue.main.async {
                 loadCurrentMonth()

@@ -21,7 +21,10 @@ struct SeafarersListView: View {
     var body: some View {
         NavigationView {
             List {
-                ForEach(month.seafarers) { seafarer in
+                // --- BEGIN CHANGE ---
+                // Sort the seafarers array by displayID in ascending order
+                ForEach(month.seafarers.sorted(using: SortDescriptor(\.displayID)), id: \.id) { seafarer in
+                // --- END CHANGE ---
                     VStack(alignment: .leading) {
                         NavigationLink(destination: SeafarerDetailView(seafarer: seafarer, inventoryItems: month.inventoryItems)) {
                             HStack {
@@ -48,7 +51,7 @@ struct SeafarersListView: View {
             }
             .navigationTitle("Seafarers")
             .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         showingAddSeafarer = true
                     }) {

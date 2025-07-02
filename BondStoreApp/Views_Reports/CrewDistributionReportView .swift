@@ -3,20 +3,16 @@ import SwiftData
 
 struct CrewDistributionReportView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject var appState: AppState // Ensure AppState is available
+    @EnvironmentObject var appState: AppState
 
-    // Use a @State property to hold the seafarers for the current month
-    // We will populate this array based on appState.selectedMonthID
     @State private var seafarersForCurrentMonth: [Seafarer] = []
 
-    // A computed property to filter seafarers who have distributions
     var seafarersWithDistributions: [Seafarer] {
         seafarersForCurrentMonth.filter { $0.totalSpent > 0 }
     }
 
     var body: some View {
         List {
-            // Display a message if no month is selected or no data for the month
             if appState.selectedMonthID == nil {
                 Text("Please select a month to view the report.")
                     .foregroundColor(.secondary)
@@ -24,9 +20,9 @@ struct CrewDistributionReportView: View {
                 Text("No crew distribution data available for \(formattedMonthYear(from: appState.selectedMonthID ?? "")).")
                     .foregroundColor(.secondary)
             } else {
-                ForEach(seafarersWithDistributions, id: \.id) { seafarer in
-                    Section(header: Text(seafarer.name)) {
-                        ForEach(seafarer.distributions, id: \.id) { dist in
+                ForEach(seafarersWithDistributions.sorted(using: SortDescriptor(\.displayID)), id: \.id) { seafarer in
+                    Section { // The content of the section
+                        ForEach(seafarer.distributions.sorted(using: SortDescriptor(\.date)), id: \.id) { dist in
                             HStack {
                                 Text(dist.date, style: .date)
                                     .frame(width: 100, alignment: .leading)
@@ -44,38 +40,41 @@ struct CrewDistributionReportView: View {
                             Text(String(format: "€%.2f", seafarer.totalSpent))
                                 .bold()
                         }
+                    } header: { // Define the header content using the 'header' label for clarity
+                        // --- BEGIN FONT CHANGE HERE ---
+                        Text("\(seafarer.displayID). \(seafarer.name)")
+                            .font(.headline) // You can choose .title, .title2, .title3, .headline, .subheadline, etc.
+                            .fontWeight(.bold) // You can use .bold, .semibold, .medium, etc.
+                            .foregroundColor(.primary) // Or any color you prefer for contrast
+                        // --- END FONT CHANGE HERE ---
                     }
                 }
             }
         }
         .navigationTitle("Crew Distributions")
-        // Load data whenever the view appears or the selected month changes
         .onAppear(perform: loadSeafarersForSelectedMonth)
-        .onChange(of: appState.selectedMonthID) { _, _ in // New syntax for onChange
+        .onChange(of: appState.selectedMonthID) { _, _ in
             loadSeafarersForSelectedMonth()
         }
     }
 
-    // Helper function to load seafarers based on the selected month
     private func loadSeafarersForSelectedMonth() {
         guard let monthID = appState.selectedMonthID else {
-            seafarersForCurrentMonth = [] // Clear data if no month is selected
+            seafarersForCurrentMonth = []
             return
         }
 
-        Task { // Perform data fetching asynchronously
+        Task {
             do {
                 let fetchDescriptor = FetchDescriptor<MonthlyData>(
                     predicate: #Predicate { $0.monthID == monthID }
                 )
                 let monthlyData = try modelContext.fetch(fetchDescriptor)
 
-                // If MonthlyData for the selected month exists, use its seafarers
                 if let currentMonthData = monthlyData.first {
-                    // Sort seafarers by name for consistent display
-                    self.seafarersForCurrentMonth = currentMonthData.seafarers.sorted(using: SortDescriptor(\.name))
+                    self.seafarersForCurrentMonth = currentMonthData.seafarers.sorted(using: SortDescriptor(\.displayID))
                 } else {
-                    self.seafarersForCurrentMonth = [] // No data for this month
+                    self.seafarersForCurrentMonth = []
                 }
             } catch {
                 print("Failed to fetch monthly data for report: \(error)")
@@ -84,7 +83,6 @@ struct CrewDistributionReportView: View {
         }
     }
 
-    // You might already have this, but including for completeness
     func formattedMonthYear(from rawString: String) -> String {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM"
