@@ -1,7 +1,6 @@
-// InventoryReportView.swift
-
 import SwiftUI
 import SwiftData
+import UIKit // Keep UIKit for ActivityViewController, though direct orientation handling is removed
 
 struct IdentifiableURL: Identifiable {
     let id = UUID()
@@ -16,12 +15,14 @@ struct InventoryReportItem: Identifiable {
     let suppliesReceived: Int
     let distributedStock: Int
     let closingStock: Int
+    let pricePerItem: Double // New: Price per item
+    let totalValue: Double   // New: Total value for the closing stock
     let originalItemID: UUID
 }
 
 struct InventoryReportView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var appState: AppState // Assuming AppState manages selectedMonthID
 
     @Query<MonthlyData>(filter: nil, sort: []) private var allMonthlyData: [MonthlyData]
     
@@ -35,8 +36,18 @@ struct InventoryReportView: View {
     @State private var isLoadingReport = false
     @State private var csvFileURLWrapper: IdentifiableURL?
 
+    // Computed property for selected month as Date
+    private var selectedMonthDate: Date {
+        guard let selectedMonthID = appState.selectedMonthID else {
+            return Date()
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.date(from: selectedMonthID) ?? Date()
+    }
+
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             Button(action: {
                 if let url = exportReportToCSV() {
                     print("CSV file URL: \(url.path)")
@@ -55,70 +66,104 @@ struct InventoryReportView: View {
                     .padding(.horizontal)
             }
 
-            List {
-                if isLoadingReport {
-                    ProgressView("Generating Report...")
-                        .padding()
-                } else if let errorMessage = errorMessage {
-                    Text("Error: \(errorMessage)")
-                        .foregroundColor(.red)
-                        .padding()
-                } else if appState.selectedMonthID == nil {
-                    Text("Please select a month to view the inventory report.")
-                        .foregroundColor(.secondary)
-                        .padding()
-                } else if monthlyDataForReport.isEmpty {
-                     Text("No monthly data found for \(formattedMonthYear(from: appState.selectedMonthID ?? "")). Please ensure data exists for this month.")
-                        .foregroundColor(.secondary)
-                        .padding()
-                } else if finalReportItems.isEmpty {
-                    Text("No relevant inventory activity found for \(formattedMonthYear(from: appState.selectedMonthID ?? "")).")
-                        .foregroundColor(.secondary)
-                        .padding()
-                } else {
-                    // Header Row
-                    Section {
+            ScrollView(.horizontal, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 0) {
+                    if isLoadingReport {
+                        ProgressView("Generating Report...")
+                            .padding()
+                    } else if let errorMessage = errorMessage {
+                        Text("Error: \(errorMessage)")
+                            .foregroundColor(.red)
+                            .padding()
+                    } else if appState.selectedMonthID == nil {
+                        Text("Please select a month to view the inventory report.")
+                            .foregroundColor(.secondary)
+                            .padding()
+                    } else if monthlyDataForReport.isEmpty {
+                        Text("No monthly data found for \(formattedMonthYear(from: appState.selectedMonthID ?? "")). Please ensure data exists for this month.")
+                            .foregroundColor(.secondary)
+                            .padding()
+                    } else if finalReportItems.isEmpty {
+                        Text("No relevant inventory activity found for \(formattedMonthYear(from: appState.selectedMonthID ?? "")).")
+                            .foregroundColor(.secondary)
+                            .padding()
+                    } else {
+                        // Header Row
                         HStack {
                             Text("Item Name")
                                 .font(.headline)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Spacer()
+                                .frame(width: 150, alignment: .leading)
                             Text("Open")
                                 .font(.headline)
-                                .frame(width: 50, alignment: .trailing)
+                                .frame(width: 60, alignment: .trailing)
                             Text("Supplied")
                                 .font(.headline)
-                                .frame(width: 70, alignment: .trailing)
+                                .frame(width: 80, alignment: .trailing)
                             Text("Dist.")
                                 .font(.headline)
-                                .frame(width: 50, alignment: .trailing)
+                                .frame(width: 60, alignment: .trailing)
                             Text("Close")
                                 .font(.headline)
-                                .frame(width: 50, alignment: .trailing)
+                                .frame(width: 60, alignment: .trailing)
+                            Text("Price/Item")
+                                .font(.headline)
+                                .frame(width: 90, alignment: .trailing)
+                            Text("Total Value")
+                                .font(.headline)
+                                .frame(width: 100, alignment: .trailing)
                         }
                         .padding(.vertical, 4)
-                    }
+                        .padding(.horizontal, 10)
 
-                    // Data Rows
-                    ForEach(finalReportItems.sorted(by: { $0.name < $1.name })) { item in
-                        HStack {
-                            Text(item.name)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Spacer()
-                            Text("\(item.openingStock)")
-                                .frame(width: 50, alignment: .trailing)
-                            Text("\(item.suppliesReceived)")
-                                .frame(width: 70, alignment: .trailing)
-                            Text("\(item.distributedStock)")
-                                .frame(width: 50, alignment: .trailing)
-                            Text("\(item.closingStock)")
-                                .frame(width: 50, alignment: .trailing)
+                        Divider()
+
+                        List {
+                            ForEach(finalReportItems.sorted(by: { $0.name < $1.name })) { item in
+                                HStack {
+                                    Text(item.name)
+                                        .frame(width: 150, alignment: .leading)
+                                    Text("\(item.openingStock)")
+                                        .frame(width: 60, alignment: .trailing)
+                                    Text("\(item.suppliesReceived)")
+                                        .frame(width: 80, alignment: .trailing)
+                                    Text("\(item.distributedStock)")
+                                        .frame(width: 60, alignment: .trailing)
+                                    Text("\(item.closingStock)")
+                                        .frame(width: 60, alignment: .trailing)
+                                    Text(item.pricePerItem, format: .currency(code: "EUR"))
+                                        .frame(width: 90, alignment: .trailing)
+                                    Text(item.totalValue, format: .currency(code: "EUR"))
+                                        .frame(width: 100, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 10)
+                            }
                         }
+                        .listStyle(.plain)
                     }
                 }
             }
+            .frame(maxHeight: .infinity)
+
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.blue.opacity(0.3))
+                .overlay(
+                    HStack {
+                        Text("Total value in \(formattedMonthName(from: Date()))")
+                            .font(.title3.bold())
+                            .foregroundColor(Color("Name1"))
+                        Spacer()
+                        Text("$\(finalReportItems.reduce(0) { $0 + $1.totalValue }, specifier: "%.2f")")
+                            .font(.title3.bold())
+                            .foregroundColor(Color("Sum"))
+                    }
+                    .padding(.horizontal)
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
         }
-        .navigationTitle("Inventory Stock Flow")
+        .navigationTitle("Inventory – \(formattedMonthName(from: selectedMonthDate))")
         .onAppear {
             generateReport()
         }
@@ -132,11 +177,14 @@ struct InventoryReportView: View {
             ActivityViewController(activityItems: [wrapper.url])
         }
     }
+    
     // MARK: - CSV Export
     private func exportReportToCSV() -> URL? {
-        let csvHeader = "Item Name,Open,Supplied,Dist.,Close\n"
+        // Updated CSV Header to include new columns
+        let csvHeader = "Item Name,Open,Supplied,Dist.,Close,Price/Item,Total Value\n"
         let csvRows = finalReportItems.map { item in
-            "\"\(item.name)\",\(item.openingStock),\(item.suppliesReceived),\(item.distributedStock),\(item.closingStock)"
+            // Ensure numbers are formatted without commas for CSV parsing
+            "\"\(item.name)\",\(item.openingStock),\(item.suppliesReceived),\(item.distributedStock),\(item.closingStock),\(item.pricePerItem),\(item.totalValue)"
         }
         let csvString = csvHeader + csvRows.joined(separator: "\n")
 
@@ -171,7 +219,7 @@ struct InventoryReportView: View {
         isLoadingReport = true
         errorMessage = nil
 
-        Task {
+        Task { @MainActor in
             do {
                 guard let currentMonthID = appState.selectedMonthID else {
                     finalReportItems = []
@@ -191,109 +239,64 @@ struct InventoryReportView: View {
 
                 var previousMonthlyData: MonthlyData? = nil
                 let previousMonthID = try calculatePreviousMonthID(from: currentMonthID)
-
-                // --- DEBUGGING PRINTS FOR OPENING STOCK ---
-                print("\n--- Starting Opening Stock Debug ---")
-                print("Current Month ID: \(currentMonthID)")
-                print("Calculated Previous Month ID: \(String(describing: previousMonthID))") // Modified line
                 
                 if let prevID = previousMonthID {
                     let previousMonthFetch = FetchDescriptor<MonthlyData>(
                         predicate: #Predicate { $0.monthID == prevID }
                     )
                     previousMonthlyData = try modelContext.fetch(previousMonthFetch).first
-                    
-                    if let prevData = previousMonthlyData {
-                        print("  ✅ Previous Monthly Data found for ID: \(prevData.monthID)")
-                        print("  Number of inventory items in previous month's data: \(prevData.inventoryItems.count)")
-                        if prevData.inventoryItems.isEmpty {
-                            print("    WARNING: Previous month's inventoryItems array is EMPTY.")
-                        }
-                        prevData.inventoryItems.forEach { item in
-                            print("    - Prev Month Item: \(item.name), Quantity: \(item.quantity), OriginalID: \(item.originalItemID ?? item.id)")                        }
-                    } else {
-                        print("  ❌ No Previous Monthly Data found for ID: \(prevID). Opening stock will be 0.")
-                    }
-                } else {
-                    print("  Previous Month ID could not be calculated (likely current month is the first month in record). Opening stock will be 0.")
                 }
-                print("--- Finished Opening Stock Debug ---")
-                // --- END DEBUGGING PRINTS FOR OPENING STOCK ---
                 
                 var currentMonthInventoryMap: [UUID: Int] = [:]
                 var previousMonthInventoryMap: [UUID: Int] = [:]
                 var currentMonthDistributionsMap: [UUID: Int] = [:]
                 var currentMonthSuppliesMap: [UUID: Int] = [:]
                 var itemNameMap: [UUID: String] = [:]
+                var itemPriceMap: [UUID: Double] = [:] // New: Store item prices
 
-                // Populate previousMonthInventoryMap
+                // Populate previousMonthInventoryMap and itemPriceMap
                 previousMonthlyData?.inventoryItems.forEach { item in
                     let originalID = item.originalItemID ?? item.id
                     previousMonthInventoryMap[originalID] = item.quantity
                     if itemNameMap[originalID] == nil {
                         itemNameMap[originalID] = item.name
                     }
+                    itemPriceMap[originalID] = item.pricePerUnit // Assuming InventoryItem has a 'price' property
                 }
-
-
-                // --- DEBUGGING PRINTS FOR SUPPLIES (from previous iteration, still useful if dates are off) ---
-                print("\n--- Starting Supply Calculation Debug (Current Month: \(currentMonthID)) ---")
-                print("Current Month Start Date: \(currentMonthStartDate) (TimeZone: \(TimeZone.current.identifier))")
-                print("Current Month End Date: \(currentMonthEndDate) (TimeZone: \(TimeZone.current.identifier))")
-
 
                 currentMonthlyData.inventoryItems.forEach { item in
                     let originalID = item.originalItemID ?? item.id
                     currentMonthInventoryMap[originalID] = item.quantity
                     itemNameMap[originalID] = item.name
-
-                    print("  Processing InventoryItem: \(item.name) (ID: \(item.id), OriginalID: \(originalID))")
-                    print("  Number of supplies linked to this item: \(item.supplies.count)")
-
+                    itemPriceMap[originalID] = item.pricePerUnit // Assuming InventoryItem has a 'price' property
 
                     item.supplies.forEach { supply in
-                        print("    - Checking Supply: Quantity = \(supply.quantity), Date = \(supply.date)")
                         if supply.date >= currentMonthStartDate && supply.date < currentMonthEndDate {
                             currentMonthSuppliesMap[originalID, default: 0] += supply.quantity
-                            print("      ✅ Supply Date IN RANGE. Accumulated for \(item.name): \(currentMonthSuppliesMap[originalID] ?? 0)")
-                        } else {
-                            print("      ❌ Supply Date OUT OF RANGE. Supply date: \(supply.date), Range: [\(currentMonthStartDate) to \(currentMonthEndDate))")
                         }
                     }
                 }
-                print("--- Finished Supply Calculation Debug ---")
-                // --- END DEBUGGING PRINTS FOR SUPPLIES ---
-
 
                 currentMonthlyData.seafarers.flatMap { $0.distributions }.forEach { dist in
                     if let originalID = dist.inventoryItem?.originalItemID ?? dist.inventoryItem?.id {
-                        // Assuming Distribution has a 'date' property too for range checking
                         if dist.date >= currentMonthStartDate && dist.date < currentMonthEndDate {
                             currentMonthDistributionsMap[originalID, default: 0] += dist.quantity
-                        } else {
-                            print("  ❌ Distribution Date OUT OF RANGE. Distribution date: \(dist.date), Item: \(dist.inventoryItem?.name ?? "Unknown")")
                         }
-                    } else {
-                        print("Warning: Distribution found with no linked inventory item.")
                     }
                 }
 
                 let allOriginalItemIDs: Set<UUID> = Set(currentMonthInventoryMap.keys)
 
-
                 var newReportItems: [InventoryReportItem] = []
                 for originalID in allOriginalItemIDs {
                     let itemName = itemNameMap[originalID] ?? "Unknown Item"
-                    let openingStock = previousMonthInventoryMap[originalID] ?? 0 // Get opening stock from previous month's closing
+                    let openingStock = previousMonthInventoryMap[originalID] ?? 0
                     let suppliesReceived = currentMonthSuppliesMap[originalID] ?? 0
                     let distributedStock = currentMonthDistributionsMap[originalID] ?? 0
                     let closingStock = openingStock + suppliesReceived - distributedStock
-
-                    print("Final Report Item Calculation: \(itemName), OriginalID: \(originalID)")
-                    print("  Opening Stock: \(openingStock)")
-                    print("  Supplies Received: \(suppliesReceived)")
-                    print("  Distributed Stock: \(distributedStock)")
-                    print("  Calculated Closing Stock: \(closingStock)")
+                    
+                    let pricePerItem = itemPriceMap[originalID] ?? 0.0 // Default to 0.0 if no price
+                    let totalValue = Double(closingStock) * pricePerItem // Calculate total value
 
                     newReportItems.append(InventoryReportItem(
                         name: itemName,
@@ -301,26 +304,25 @@ struct InventoryReportView: View {
                         suppliesReceived: suppliesReceived,
                         distributedStock: distributedStock,
                         closingStock: closingStock,
+                        pricePerItem: pricePerItem,
+                        totalValue: totalValue,
                         originalItemID: originalID
                     ))
                 }
                 
-                await MainActor.run {
-                    self.finalReportItems = newReportItems
-                    self.isLoadingReport = false
-                }
+                self.finalReportItems = newReportItems
+                self.isLoadingReport = false
 
             } catch {
-                await MainActor.run {
-                    self.errorMessage = error.localizedDescription
-                    self.isLoadingReport = false
-                }
+                self.errorMessage = error.localizedDescription
+                self.isLoadingReport = false
                 print("Error generating report: \(error)")
             }
         }
     }
 
-    // MARK: - Helper Functions (remain unchanged, ensure accessible)
+    // MARK: - Helper Functions
+    // (These helper functions remain the same as your original code)
 
     private func calculatePreviousMonthID(from monthID: String) throws -> String? {
         let dateFormatter = DateFormatter()
@@ -338,11 +340,22 @@ struct InventoryReportView: View {
         return dateFormatter.string(from: previousMonthDate)
     }
 
+    private func formattedMonthYear(from monthID: String) -> String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM"
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        
+        guard let date = dateFormatter.date(from: monthID) else { return monthID }
+        
+        dateFormatter.dateFormat = "MMMM yyyy"
+        return dateFormatter.string(from: date)
+    }
+
     private func dateRange(forMonthID monthID: String) throws -> (Date, Date) {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM"
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.timeZone = TimeZone.current
+        dateFormatter.timeZone = TimeZone.current // Important for consistent date range
 
         guard let startDate = dateFormatter.date(from: monthID) else {
             throw ReportError.invalidMonthIDFormat
@@ -371,6 +384,7 @@ enum ReportError: LocalizedError {
 }
 
 
+// ActivityViewController (remains unchanged)
 import UIKit
 import SwiftUI
 
@@ -386,4 +400,8 @@ struct ActivityViewController: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-
+    private func formattedMonthName(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "LLLL yyyy"
+        return formatter.string(from: date)
+    }

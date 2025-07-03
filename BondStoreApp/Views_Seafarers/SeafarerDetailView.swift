@@ -19,6 +19,7 @@ struct SeafarerDetailView: View {
     @State private var editName = ""
     @State private var editID = "" // This var is correctly used for editing
     @State private var editRank = ""
+    @State private var editIsRepresentative = false
 
     // Form state for new distribution
     @State private var selectedItem: InventoryItem?
@@ -36,6 +37,17 @@ struct SeafarerDetailView: View {
         self._seafarer = Bindable(wrappedValue: seafarer)
         self.inventoryItems = inventoryItems
         self._selectedItem = State(initialValue: nil)
+    }
+
+    // Helper function to calculate price with tax for non-representatives
+    func priceWithTax(for seafarer: Seafarer, basePrice: Double) -> Double {
+        seafarer.isRepresentative ? basePrice : basePrice * 1.10
+    }
+
+    func recalculateTotalSpent() {
+        seafarer.totalSpent = seafarer.distributions.reduce(0) { partialSum, dist in
+            partialSum + Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
+        }
     }
 
     var body: some View {
@@ -90,7 +102,8 @@ struct SeafarerDetailView: View {
                                         .font(.headline)
                                         .bold()
                                     Spacer()
-                                    Text("Total: $\(dist.total, specifier: "%.2f")")
+                                    let taxedTotal = Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
+                                    Text("Total: $\(taxedTotal, specifier: "%.2f")")
                                         .bold()
                                         .foregroundColor(Color("Sum"))
                                 }
@@ -114,7 +127,7 @@ struct SeafarerDetailView: View {
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 dist.inventoryItem?.quantity += dist.quantity
-                                seafarer.totalSpent -= Double(dist.quantity) * dist.unitPrice
+                                seafarer.totalSpent -= Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
                                 if let index = seafarer.distributions.firstIndex(of: dist) {
                                     seafarer.distributions.remove(at: index)
                                     modelContext.delete(dist)
@@ -162,6 +175,7 @@ struct SeafarerDetailView: View {
                     editID = seafarer.displayID
                     editName = seafarer.name
                     editRank = seafarer.rank
+                    editIsRepresentative = seafarer.isRepresentative
                     isEditingSeafarer = true
                 }
             }
@@ -213,7 +227,7 @@ struct SeafarerDetailView: View {
                             selectedItem.quantity -= qty
 
                             // Update seafarer's total spent
-                            seafarer.totalSpent += Double(qty) * selectedItem.pricePerUnit
+                            seafarer.totalSpent += Double(qty) * priceWithTax(for: seafarer, basePrice: selectedItem.pricePerUnit)
                             
                             // --- BEGIN ADDED SAVE FOR NEW DISTRIBUTION ---
                             try? modelContext.save() // Save changes to the model context
@@ -261,7 +275,7 @@ struct SeafarerDetailView: View {
                         for dist in scannedDistributions {
                             dist.seafarer = seafarer
                             seafarer.distributions.append(dist)
-                            seafarer.totalSpent += Double(dist.quantity) * dist.unitPrice
+                            seafarer.totalSpent += Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
                             modelContext.insert(dist) // Ensure scanned distributions are inserted
                         }
                         // --- BEGIN ADDED SAVE FOR SCANNED DISTRIBUTIONS ---
@@ -314,7 +328,7 @@ struct SeafarerDetailView: View {
                                 }
                                 inventoryItem.quantity -= quantityDifference
                             }
-                            seafarer.totalSpent += Double(quantityDifference) * dist.unitPrice
+                            seafarer.totalSpent += Double(quantityDifference) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
                             dist.quantity = newQuantity
                             dist.date = editedDate
                             // --- BEGIN ADDED SAVE FOR EDITING DISTRIBUTION ---
@@ -342,6 +356,7 @@ struct SeafarerDetailView: View {
                     TextField("ID", text: $editID)
                     TextField("Name", text: $editName)
                     TextField("Rank", text: $editRank)
+                    Toggle("Is Representative", isOn: $editIsRepresentative)
                 }
                 .navigationTitle("Edit Seafarer")
                 .toolbar {
@@ -350,9 +365,9 @@ struct SeafarerDetailView: View {
                             seafarer.name = editName
                             seafarer.displayID = editID
                             seafarer.rank = editRank
-                            // --- BEGIN ADDED SAVE FOR EDITING SEAFARER ---
+                            seafarer.isRepresentative = editIsRepresentative
+                            recalculateTotalSpent()
                             try? modelContext.save() // THIS IS THE CRUCIAL LINE!
-                            // --- END ADDED SAVE FOR EDITING SEAFARER ---
                             isEditingSeafarer = false
                         }
                     }

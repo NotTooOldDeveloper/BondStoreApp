@@ -10,9 +10,22 @@
 		A3A79B4A2E0CB030005DD090 /* BondStoreApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BondStoreApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A3A79BC92E16EFB5005DD090 /* Exceptions for "BondStoreApp" folder in "BondStoreApp" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A3A79B492E0CB030005DD090 /* BondStoreApp */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A3A79B4C2E0CB030005DD090 /* BondStoreApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A3A79BC92E16EFB5005DD090 /* Exceptions for "BondStoreApp" folder in "BondStoreApp" target */,
+			);
 			path = BondStoreApp;
 			sourceTree = "<group>";
 		};
@@ -255,6 +268,7 @@
 				DEVELOPMENT_TEAM = ZW8X6DG993;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BondStoreApp/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Yo-HO, I need your Camera, man!";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -285,6 +299,7 @@
 				DEVELOPMENT_TEAM = ZW8X6DG993;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BondStoreApp/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Yo-HO, I need your Camera, man!";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

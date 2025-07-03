@@ -12,11 +12,17 @@ struct SeafarersListView: View {
     @State private var newID = ""
     @State private var newName = ""
     @State private var newRank = ""
+    @State private var newIsRepresentative = false
 
     @State private var showingFileImporter = false
     // Using a single state for import feedback and alert presentation
     @State private var importFeedbackMessage: String?
     @State private var showingImportAlert = false
+    private var monthDate: Date {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.date(from: month.monthID) ?? Date()
+    }
 
     var body: some View {
         NavigationView {
@@ -46,18 +52,19 @@ struct SeafarersListView: View {
                 }
                 .onDelete(perform: deleteSeafarers)
             }
-            .navigationTitle("Seafarers")
+            .navigationTitle("Seafarers – \(formattedMonthName(from: monthDate))")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Import CSV") {
-                        showingFileImporter = true
-                    }
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showingAddSeafarer = true
+                    Menu {
+                        Button("Add Seafarer") {
+                            showingAddSeafarer = true
+                        }
+                        Button("Import CSV") {
+                            showingFileImporter = true
+                        }
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "ellipsis.circle")
+                            .imageScale(.large)
                     }
                 }
             }
@@ -75,6 +82,7 @@ struct SeafarersListView: View {
                         TextField("ID", text: $newID)
                         TextField("Name", text: $newName)
                         TextField("Rank", text: $newRank)
+                        Toggle("Is Representative", isOn: $newIsRepresentative)
                     }
                     .navigationTitle("New Seafarer")
                     .toolbar {
@@ -107,7 +115,8 @@ struct SeafarersListView: View {
         let seafarer = Seafarer(
             displayID: newID.trimmingCharacters(in: .whitespacesAndNewlines),
             name: newName.trimmingCharacters(in: .whitespacesAndNewlines),
-            rank: newRank.trimmingCharacters(in: .whitespacesAndNewlines)
+            rank: newRank.trimmingCharacters(in: .whitespacesAndNewlines),
+            isRepresentative: newIsRepresentative
         )
 
         if month.seafarers.contains(where: { $0.displayID == seafarer.displayID }) {
@@ -152,6 +161,7 @@ struct SeafarersListView: View {
         newID = ""
         newName = ""
         newRank = ""
+        newIsRepresentative = false
     }
 
     // MARK: - CSV Import Logic Handlers
@@ -255,3 +265,9 @@ struct SeafarersListView: View {
         }
     }
 }
+
+    private func formattedMonthName(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "LLLL"
+        return formatter.string(from: date)
+    }

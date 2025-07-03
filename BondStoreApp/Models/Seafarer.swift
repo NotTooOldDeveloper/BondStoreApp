@@ -15,15 +15,17 @@ class Seafarer {
     var name: String
     var rank: String
     var totalSpent: Double
+    var isRepresentative: Bool = false
 
     @Relationship var distributions: [Distribution] = []
 
-    init(displayID: String, name: String, rank: String, totalSpent: Double = 0) {
+    init(displayID: String, name: String, rank: String, totalSpent: Double = 0, isRepresentative: Bool = false) {
         self.id = UUID()
         self.displayID = displayID
         self.name = name
         self.rank = rank
         self.totalSpent = totalSpent
+        self.isRepresentative = isRepresentative
     }
 }
 
@@ -34,4 +36,3 @@ extension Seafarer {
         return clone
     }
 }
-

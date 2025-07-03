@@ -8,12 +8,31 @@ struct CrewDistributionReportView: View {
     @State private var seafarersForCurrentMonth: [Seafarer] = []
     @State private var csvFileURLWrapper: IdentifiableURL?
 
+    func priceWithTax(for seafarer: Seafarer, basePrice: Double) -> Double {
+        seafarer.isRepresentative ? basePrice : basePrice * 1.10
+    }
+
     var seafarersWithDistributions: [Seafarer] {
         seafarersForCurrentMonth.filter { $0.totalSpent > 0 }
     }
+    var totalSpentAllSeafarers: Double {
+        seafarersWithDistributions.reduce(0) { $0 + $1.totalSpent }
+    }
+    private var selectedMonthDate: Date? {
+        guard let monthID = appState.selectedMonthID else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.date(from: monthID)
+    }
+
+    private func formattedMonthYear(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "LLLL yyyy"
+        return formatter.string(from: date)
+    }
 
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             Button(action: {
                 if let url = exportReportToCSV() {
                     print("CSV file URL: \(url.path)")
@@ -31,6 +50,7 @@ struct CrewDistributionReportView: View {
                     .cornerRadius(8)
                     .padding(.horizontal)
             }
+            .padding(.top, 8)
 
             List {
                 if appState.selectedMonthID == nil {
@@ -50,7 +70,7 @@ struct CrewDistributionReportView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                     Text("\(dist.quantity)")
                                         .frame(width: 50, alignment: .center)
-                                    Text(String(format: "€%.2f", Double(dist.quantity) * dist.unitPrice))
+                                    Text(String(format: "€%.2f", Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)))
                                         .frame(width: 80, alignment: .trailing)
                                 }
                             }
@@ -69,8 +89,30 @@ struct CrewDistributionReportView: View {
                     }
                 }
             }
+            .listStyle(PlainListStyle())
+            .frame(maxHeight: .infinity)
+
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.blue.opacity(0.3))
+                .overlay(
+                    HStack {
+                        Text("Total Spent")
+                            .font(.title3.bold())
+                            .foregroundColor(Color("Name1"))
+                        Spacer()
+                        Text("€\(totalSpentAllSeafarers, specifier: "%.2f")")
+                            .font(.title3.bold())
+                            .foregroundColor(Color("Sum"))
+                    }
+                    .padding(.horizontal)
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .padding(.horizontal)
+                .padding(.bottom, 35)
         }
-        .navigationTitle("Crew Distributions")
+        .edgesIgnoringSafeArea(.bottom)
+        .navigationTitle(selectedMonthDate.map { "Crew Distributions – \(formattedMonthYear(from: $0))" } ?? "Crew Distributions")
         .onAppear(perform: loadSeafarersForSelectedMonth)
         .onChange(of: appState.selectedMonthID) { _, _ in
             loadSeafarersForSelectedMonth()
@@ -85,7 +127,10 @@ struct CrewDistributionReportView: View {
 
         for seafarer in seafarersWithDistributions.sorted(by: { $0.displayID < $1.displayID }) {
             for dist in seafarer.distributions.sorted(by: { $0.date < $1.date }) {
-                let totalPrice = Double(dist.quantity) * dist.unitPrice
+                func priceWithTax(for seafarer: Seafarer, basePrice: Double) -> Double {
+                    seafarer.isRepresentative ? basePrice : basePrice * 1.10
+                }
+                let totalPrice = Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
                 let line = "\(seafarer.displayID),\"\(seafarer.name)\",\(dist.date.formatted(date: .numeric, time: .omitted)),\"\(dist.itemName)\",\(dist.quantity),\(String(format: "%.2f", dist.unitPrice)),\(String(format: "%.2f", totalPrice))\n"
                 csvString.append(line)
             }

@@ -22,6 +22,18 @@ struct InventoryListView: View {
     @State private var isShowingScanner = false
     @State private var showingInventoryBarcodeScanner = false
 
+    private var monthDate: Date {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.date(from: month.monthID) ?? Date()
+    }
+
+    private func formattedMonthName(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "LLLL"
+        return formatter.string(from: date)
+    }
+
     var body: some View {
         NavigationView {
             List {
@@ -50,7 +62,7 @@ struct InventoryListView: View {
                 .onDelete(perform: deleteItems)
 
             }
-            .navigationTitle("Inventory")
+            .navigationTitle("Inventory – \(formattedMonthName(from: monthDate))")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
