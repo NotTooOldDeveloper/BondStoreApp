@@ -3,6 +3,11 @@
 import SwiftUI
 import SwiftData
 
+struct IdentifiableURL: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
 // Helper struct to hold the data for each row in the report
 struct InventoryReportItem: Identifiable {
     let id = UUID()
@@ -28,66 +33,87 @@ struct InventoryReportView: View {
     @State private var finalReportItems: [InventoryReportItem] = []
     @State private var errorMessage: String?
     @State private var isLoadingReport = false
+    @State private var csvFileURLWrapper: IdentifiableURL?
 
     var body: some View {
-        List {
-            if isLoadingReport {
-                ProgressView("Generating Report...")
-                    .padding()
-            } else if let errorMessage = errorMessage {
-                Text("Error: \(errorMessage)")
-                    .foregroundColor(.red)
-                    .padding()
-            } else if appState.selectedMonthID == nil {
-                Text("Please select a month to view the inventory report.")
-                    .foregroundColor(.secondary)
-                    .padding()
-            } else if monthlyDataForReport.isEmpty {
-                 Text("No monthly data found for \(formattedMonthYear(from: appState.selectedMonthID ?? "")). Please ensure data exists for this month.")
-                    .foregroundColor(.secondary)
-                    .padding()
-            } else if finalReportItems.isEmpty {
-                Text("No relevant inventory activity found for \(formattedMonthYear(from: appState.selectedMonthID ?? "")).")
-                    .foregroundColor(.secondary)
-                    .padding()
-            } else {
-                // Header Row
-                Section {
-                    HStack {
-                        Text("Item Name")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Spacer()
-                        Text("Open")
-                            .font(.headline)
-                            .frame(width: 50, alignment: .trailing)
-                        Text("Supplied")
-                            .font(.headline)
-                            .frame(width: 70, alignment: .trailing)
-                        Text("Dist.")
-                            .font(.headline)
-                            .frame(width: 50, alignment: .trailing)
-                        Text("Close")
-                            .font(.headline)
-                            .frame(width: 50, alignment: .trailing)
-                    }
-                    .padding(.vertical, 4)
+        VStack {
+            Button(action: {
+                if let url = exportReportToCSV() {
+                    print("CSV file URL: \(url.path)")
+                    self.csvFileURLWrapper = IdentifiableURL(url: url)
+                } else {
+                    print("Failed to create CSV file")
                 }
+            }) {
+                Text("Export CSV")
+                    .font(.headline)
+                    .padding(8)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                    .padding(.horizontal)
+            }
 
-                // Data Rows
-                ForEach(finalReportItems.sorted(by: { $0.name < $1.name })) { item in
-                    HStack {
-                        Text(item.name)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Spacer()
-                        Text("\(item.openingStock)")
-                            .frame(width: 50, alignment: .trailing)
-                        Text("\(item.suppliesReceived)")
-                            .frame(width: 70, alignment: .trailing)
-                        Text("\(item.distributedStock)")
-                            .frame(width: 50, alignment: .trailing)
-                        Text("\(item.closingStock)")
-                            .frame(width: 50, alignment: .trailing)
+            List {
+                if isLoadingReport {
+                    ProgressView("Generating Report...")
+                        .padding()
+                } else if let errorMessage = errorMessage {
+                    Text("Error: \(errorMessage)")
+                        .foregroundColor(.red)
+                        .padding()
+                } else if appState.selectedMonthID == nil {
+                    Text("Please select a month to view the inventory report.")
+                        .foregroundColor(.secondary)
+                        .padding()
+                } else if monthlyDataForReport.isEmpty {
+                     Text("No monthly data found for \(formattedMonthYear(from: appState.selectedMonthID ?? "")). Please ensure data exists for this month.")
+                        .foregroundColor(.secondary)
+                        .padding()
+                } else if finalReportItems.isEmpty {
+                    Text("No relevant inventory activity found for \(formattedMonthYear(from: appState.selectedMonthID ?? "")).")
+                        .foregroundColor(.secondary)
+                        .padding()
+                } else {
+                    // Header Row
+                    Section {
+                        HStack {
+                            Text("Item Name")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Spacer()
+                            Text("Open")
+                                .font(.headline)
+                                .frame(width: 50, alignment: .trailing)
+                            Text("Supplied")
+                                .font(.headline)
+                                .frame(width: 70, alignment: .trailing)
+                            Text("Dist.")
+                                .font(.headline)
+                                .frame(width: 50, alignment: .trailing)
+                            Text("Close")
+                                .font(.headline)
+                                .frame(width: 50, alignment: .trailing)
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    // Data Rows
+                    ForEach(finalReportItems.sorted(by: { $0.name < $1.name })) { item in
+                        HStack {
+                            Text(item.name)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Spacer()
+                            Text("\(item.openingStock)")
+                                .frame(width: 50, alignment: .trailing)
+                            Text("\(item.suppliesReceived)")
+                                .frame(width: 70, alignment: .trailing)
+                            Text("\(item.distributedStock)")
+                                .frame(width: 50, alignment: .trailing)
+                            Text("\(item.closingStock)")
+                                .frame(width: 50, alignment: .trailing)
+                        }
                     }
                 }
             }
@@ -101,6 +127,42 @@ struct InventoryReportView: View {
         }
         .onChange(of: allMonthlyData) {
             generateReport()
+        }
+        .sheet(item: $csvFileURLWrapper) { wrapper in
+            ActivityViewController(activityItems: [wrapper.url])
+        }
+    }
+    // MARK: - CSV Export
+    private func exportReportToCSV() -> URL? {
+        let csvHeader = "Item Name,Open,Supplied,Dist.,Close\n"
+        let csvRows = finalReportItems.map { item in
+            "\"\(item.name)\",\(item.openingStock),\(item.suppliesReceived),\(item.distributedStock),\(item.closingStock)"
+        }
+        let csvString = csvHeader + csvRows.joined(separator: "\n")
+
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("InventoryReport.csv")
+
+        do {
+            try csvString.write(to: fileURL, atomically: true, encoding: .utf8)
+            let fileExists = FileManager.default.fileExists(atPath: fileURL.path)
+            let fileSize: UInt64
+            if fileExists {
+                let attr = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+                fileSize = attr[FileAttributeKey.size] as? UInt64 ?? 0
+            } else {
+                fileSize = 0
+            }
+            print("File exists after writing: \(fileExists), size: \(fileSize) bytes")
+            if fileExists && fileSize > 0 {
+                return fileURL
+            } else {
+                print("File is missing or empty, returning nil")
+                return nil
+            }
+        } catch {
+            print("Error writing CSV: \(error)")
+            return nil
         }
     }
 
@@ -307,3 +369,21 @@ enum ReportError: LocalizedError {
         }
     }
 }
+
+
+import UIKit
+import SwiftUI
+
+struct ActivityViewController: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    let applicationActivities: [UIActivity]? = nil
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities)
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+
