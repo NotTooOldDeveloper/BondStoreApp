@@ -17,6 +17,9 @@ struct ReportsView: View {
                 NavigationLink("Crew Distribution Report") {
                     CrewDistributionReportView()
                 }
+                NavigationLink("Inventory Stock Report") { // New link for the inventory report
+                    InventoryReportView()
+                                }
             }
             .navigationTitle("Reports")
         }
