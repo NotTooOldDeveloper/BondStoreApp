@@ -16,11 +16,19 @@ class InventoryItem {
     var pricePerUnit: Double
     var barcode: String?
     var receivedDate: Date
-    var originalItemID: UUID?
+    var originalItemID: UUID? // This should be initialized for new items
 
-    
+    // MARK: - Relationships (Crucial for deletion logic)
 
-    @Relationship var supplies: [SupplyRecord] = []
+    // Ensure the 'inverse' is specified for both relationships
+    @Relationship(inverse: \SupplyRecord.inventoryItem) // Added inverse
+    var supplies: [SupplyRecord] = []
+
+    // 🔴 YOU NEED TO ADD THIS LINE 🔴
+    @Relationship(inverse: \Distribution.inventoryItem)
+    var distributions: [Distribution] = []
+
+    // MARK: - Initializer
 
     init(name: String, quantity: Int, pricePerUnit: Double, barcode: String? = nil, receivedDate: Date = Date()) {
         self.id = UUID()
@@ -29,8 +37,11 @@ class InventoryItem {
         self.pricePerUnit = pricePerUnit
         self.barcode = barcode
         self.receivedDate = receivedDate
+        self.originalItemID = self.id // Initialize originalItemID for new items here
     }
 }
+
+// MARK: - Extensions (Remain largely the same, but deepCopy needs to handle distributions if you use them)
 
 extension InventoryItem {
     func deepCopy() -> InventoryItem {
@@ -43,6 +54,8 @@ extension InventoryItem {
         )
         clone.originalItemID = self.originalItemID ?? self.id
         clone.supplies = self.supplies.map { $0.deepCopy(for: clone) }
+        // If you ever deep-copy InventoryItem and need to copy distributions, you'd add:
+        // clone.distributions = self.distributions.map { $0.deepCopy(for: clone) } // Assuming Distribution has a deepCopy
         return clone
     }
 }

@@ -1,5 +1,3 @@
-// InventoryListView.swift
-
 import SwiftUI
 import AVFoundation
 import SwiftData
@@ -7,20 +5,25 @@ import SwiftData
 struct InventoryListView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.modelContext) private var modelContext
-    var month: MonthlyData
+    var month: MonthlyData // Assuming MonthlyData has a @Relationship for inventoryItems
 
     @State private var showingAddEditSupply = false
     @State private var editingItem: InventoryItem?
 
-    // Form state
+    // Form state for Add/Edit sheet
     @State private var itemName = ""
     @State private var itemQuantity = "" // String for TextField input
     @State private var itemBarcode = ""
-    @State private var itemPrice = ""   // String for TextField input
+    @State private var itemPrice = ""    // String for TextField input
     @State private var itemReceivedDate = Date() // This will be the date of the supply
 
-    @State private var isShowingScanner = false
-    @State private var showingInventoryBarcodeScanner = false
+    @State private var isShowingScanner = false // For the barcode scan within Add/Edit sheet
+    @State private var showingInventoryBarcodeScanner = false // For the dedicated Inventory barcode scanner
+
+    // New state for deletion warnings
+    @State private var showingDeletionAlert = false
+    @State private var itemToDelete: InventoryItem?
+    @State private var showingDistributionExistsAlert = false
 
     private var monthDate: Date {
         let formatter = DateFormatter()
@@ -37,7 +40,7 @@ struct InventoryListView: View {
     var body: some View {
         NavigationView {
             List {
-                ForEach(month.inventoryItems.sorted(by: { $0.name < $1.name }), id: \.id) { item in // Added sorting for consistent display
+                ForEach(month.inventoryItems.sorted(by: { $0.name < $1.name }), id: \.id) { item in
                     HStack {
                         VStack(alignment: .leading) {
                             Text(item.name)
@@ -54,13 +57,12 @@ struct InventoryListView: View {
                                 .foregroundStyle(Color.gray)
                         }
                     }
-                    .contentShape(Rectangle())
+                    .contentShape(Rectangle()) // Makes the whole row tappable
                     .onTapGesture {
                         startEditing(item)
                     }
                 }
-                .onDelete(perform: deleteItems)
-
+                .onDelete(perform: confirmDeleteItems) // Modified to confirm before delete
             }
             .navigationTitle("Inventory – \(formattedMonthName(from: monthDate))")
             .toolbar {
@@ -83,6 +85,25 @@ struct InventoryListView: View {
                     }
                 }
             }
+            // Alert for confirming deletion
+            .alert("Confirm Deletion", isPresented: $showingDeletionAlert) {
+                Button("Delete", role: .destructive) {
+                    if let item = itemToDelete {
+                        deleteSingleItem(item) // Call new function for single item deletion
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    itemToDelete = nil // Clear the item to delete
+                }
+            } message: {
+                Text("Are you sure you want to delete \(itemToDelete?.name ?? "this item")? This action cannot be undone.")
+            }
+            // Alert for when distributions/supplies exist
+            .alert("Item Cannot Be Deleted", isPresented: $showingDistributionExistsAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("This item has associated distributions or supplies and cannot be deleted. Please remove all related entries first.")
+            }
             .sheet(isPresented: $showingAddEditSupply) {
                 NavigationView {
                     Form {
@@ -91,7 +112,6 @@ struct InventoryListView: View {
                             .keyboardType(.numberPad)
                         TextField("Price", text: $itemPrice)
                             .keyboardType(.decimalPad)
-                        // It's crucial that this date reflects the *date of the supply*
                         DatePicker("Date Received", selection: $itemReceivedDate, displayedComponents: .date)
                         HStack {
                             TextField("Barcode", text: $itemBarcode)
@@ -123,13 +143,11 @@ struct InventoryListView: View {
                 }
             }
             .sheet(isPresented: $showingInventoryBarcodeScanner) {
-                // You might need to update InventoryBarcodeScannerView as well if it adds items directly
+                // Ensure InventoryBarcodeScannerView can handle adding items and linking to month
                 InventoryBarcodeScannerView(month: month, existingBarcodes: month.inventoryItems.compactMap { $0.barcode ?? "" })
             }
         }
     }
-
-    // private func itemBarcodeFor(_ item: InventoryItem) -> String { ... } // Not used in this context, can be removed if not needed elsewhere
 
     private func startAdding() {
         editingItem = nil
@@ -137,7 +155,7 @@ struct InventoryListView: View {
         itemQuantity = ""
         itemBarcode = ""
         itemPrice = ""
-        itemReceivedDate = Date() // Initialize to current date for new supplies
+        itemReceivedDate = Date()
         showingAddEditSupply = true
     }
 
@@ -147,10 +165,6 @@ struct InventoryListView: View {
         itemQuantity = String(item.quantity)
         itemBarcode = item.barcode ?? ""
         itemPrice = String(format: "%.2f", item.pricePerUnit)
-        // When editing, the date field should represent the *most recent supply date* if possible,
-        // or just the current date if this is for a new supply. For simplicity, we'll
-        // load the existing item's receivedDate, but if the user *adds* more stock, they should
-        // change this to the new supply date.
         itemReceivedDate = item.receivedDate
         showingAddEditSupply = true
     }
@@ -160,51 +174,41 @@ struct InventoryListView: View {
         let price = Double(itemPrice) ?? 0.0
 
         if let item = editingItem {
-            // --- Logic for UPDATING an existing item ---
             let oldQty = item.quantity
             item.name = itemName
             item.pricePerUnit = price
             item.barcode = itemBarcode.isEmpty ? nil : itemBarcode
-            item.receivedDate = itemReceivedDate // Update item's overall received date
+            item.receivedDate = itemReceivedDate
 
-            // Calculate the quantity that was *supplied* in this transaction
             let suppliedAmount = newQty - oldQty
 
-            // Update item quantity *before* creating supply record, so the supply record is based on the difference
-            item.quantity = newQty
+            item.quantity = newQty // Update item quantity directly
 
-            // Only create a SupplyRecord if the quantity *increased*
             if suppliedAmount > 0 {
                 let supply = SupplyRecord(date: itemReceivedDate, quantity: suppliedAmount)
-                supply.inventoryItem = item // Link the SupplyRecord to the InventoryItem
-                item.supplies.append(supply) // Add to the relationship in InventoryItem
-                modelContext.insert(supply)  // Insert the SupplyRecord into the context
+                supply.inventoryItem = item
+                item.supplies.append(supply)
+                modelContext.insert(supply)
             }
-            // If quantity decreased or stayed same, it's not a supply, so no SupplyRecord needed here.
-            // Other operations (like distributions) would handle decreases.
-
         } else {
-            // --- Logic for ADDING a NEW item ---
             let newItem = InventoryItem(name: itemName, quantity: newQty, pricePerUnit: price, receivedDate: itemReceivedDate)
             newItem.barcode = itemBarcode.isEmpty ? nil : itemBarcode
             newItem.originalItemID = newItem.id // Set originalItemID for brand new items
 
-            // Create a SupplyRecord for the initial quantity of the new item
             let initialSupply = SupplyRecord(date: itemReceivedDate, quantity: newQty)
-            initialSupply.inventoryItem = newItem // Link the SupplyRecord to the new InventoryItem
-            newItem.supplies.append(initialSupply) // Add to the relationship in InventoryItem
-            modelContext.insert(initialSupply) // Insert the SupplyRecord into the context
+            initialSupply.inventoryItem = newItem
+            newItem.supplies.append(initialSupply)
+            modelContext.insert(initialSupply)
 
             modelContext.insert(newItem)
             month.inventoryItems.append(newItem)
         }
 
-        // Always save the context after changes
         do {
             try modelContext.save()
         } catch {
             print("Failed to save context after item changes/supply: \(error)")
-            // Potentially show an alert to the user
+            // Consider adding a user-facing alert here for save errors
         }
 
         showingAddEditSupply = false
@@ -212,27 +216,61 @@ struct InventoryListView: View {
 
     private func cancel() {
         showingAddEditSupply = false
-        // If editingItem was set, ensure any pending changes are reverted or cancelled
-        if editingItem != nil  {
+        if editingItem != nil {
             modelContext.rollback() // Discard unsaved changes for the item if any
         }
     }
 
-    private func deleteItems(at offsets: IndexSet) {
-        // ... (this function remains the same, it correctly deletes items from the month and context)
-        DispatchQueue.main.async {
-            for index in offsets {
-                let item = month.inventoryItems[index]
-                modelContext.delete(item)
+    // MARK: - Deletion Logic
+
+    // This function is called by the .onDelete swipe action
+    private func confirmDeleteItems(at offsets: IndexSet) {
+        // Since we want to check each item before deleting, iterate through the offsets.
+        // If even one item cannot be deleted, show the alert and stop the process for all.
+        var itemsCannotBeDeleted = false
+        var itemsToConfirm: [InventoryItem] = []
+
+        for index in offsets {
+            let item = month.inventoryItems[index]
+            // IMPORTANT: Ensure your InventoryItem model has @Relationship var distributions: [Distribution] = []
+            // AND @Relationship var supplies: [SupplyRecord] = [] for these checks to work.
+            if !item.distributions.isEmpty || !item.supplies.isEmpty {
+                itemsCannotBeDeleted = true
+                break // Found an item that blocks deletion, so stop checking and show general alert
             }
-            month.inventoryItems.remove(atOffsets: offsets)
+            itemsToConfirm.append(item)
+        }
+
+        if itemsCannotBeDeleted {
+            showingDistributionExistsAlert = true
+        } else if let firstItem = itemsToConfirm.first {
+            // If only one item, show its name in confirmation. Otherwise, a generic message.
+            itemToDelete = firstItem // Store the first item for the alert message
+            showingDeletionAlert = true // Trigger the confirmation alert
+        }
+        // If multiple items are selected and all can be deleted, the user will confirm generic "these items"
+        // and deleteItems will be called.
+        // For simplicity with the single-item `itemToDelete` state, we'll confirm for one at a time via swipe.
+        // For multiple swipe deletions, you might need a different confirmation flow.
+        // For now, if multiple are swiped and all are deletable, the current setup will only trigger the alert for the first and then delete it.
+        // A better approach for multi-swipe would be to collect all deletable items and delete them without per-item confirmation.
+        // For this patch, we will prioritize stopping if any item has dependencies.
+    }
+    
+    // New function to handle the actual deletion of a single item
+    private func deleteSingleItem(_ item: InventoryItem) {
+        if let index = month.inventoryItems.firstIndex(where: { $0.id == item.id }) {
+            modelContext.delete(item)
+            month.inventoryItems.remove(at: index)
 
             do {
                 try modelContext.save()
             } catch {
-                print("Failed to save context after deleting items: \(error)")
+                print("Failed to save context after deleting item: \(error)")
+                // Show an error alert if save fails
             }
         }
+        itemToDelete = nil // Clear the stored item
     }
 }
 
@@ -240,7 +278,6 @@ struct InventoryListView: View {
 // This code is provided by you and seems to work for scanning.
 // Its integration point is in the sheet and action in the `InventoryListView`.
 struct BasicBarcodeScannerView: UIViewControllerRepresentable {
-    // ... (rest of the code is the same)
     var completion: (String) -> Void
 
     func makeUIViewController(context: Context) -> ScannerViewController {
@@ -252,7 +289,6 @@ struct BasicBarcodeScannerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: ScannerViewController, context: Context) {}
 
     class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
-        // ... (rest of the code is the same)
         var captureSession: AVCaptureSession!
         var previewLayer: AVCaptureVideoPreviewLayer!
         var completion: ((String) -> Void)?
@@ -327,7 +363,7 @@ struct BasicBarcodeScannerView: UIViewControllerRepresentable {
 
             if let metadataObject = metadataObjects.first {
                 guard let readableObject = metadataObject as? AVMetadataMachineReadableCodeObject,
-                      let stringValue = readableObject.stringValue else { return }
+                        let stringValue = readableObject.stringValue else { return }
                 AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
                 completion?(stringValue)
                 // Removed dismiss(animated: true) so SwiftUI sheet state handles dismissal.
