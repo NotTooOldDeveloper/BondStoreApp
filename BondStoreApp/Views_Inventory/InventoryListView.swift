@@ -76,7 +76,18 @@ struct InventoryListView: View {
     private var monthDate: Date {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM"
-        return formatter.date(from: self.monthID) ?? Date()
+        formatter.timeZone = TimeZone.current // Ensures consistency
+
+        // 1. Get the start date of the selected month
+        guard let startDate = formatter.date(from: self.monthID) else { return Date() }
+
+        // 2. Get the start date of the NEXT month
+        guard let nextMonthDate = Calendar.current.date(byAdding: .month, value: 1, to: startDate) else { return Date() }
+
+        // 3. Get the exact end of the selected month by subtracting one second
+        let endOfMonth = Calendar.current.date(byAdding: .second, value: -1, to: nextMonthDate)
+        
+        return endOfMonth ?? Date()
     }
 
     private func formattedMonthName(from date: Date) -> String {
@@ -86,8 +97,19 @@ struct InventoryListView: View {
     }
     
     private var inventoryListContent: some View {
-        List {
-            ForEach(inventoryItems) { item in
+        let startOfOpeningStock = Calendar.current.date(byAdding: .month, value: -1, to: monthDate) ?? Date()
+
+        // Filter items based on the new rule
+        let filteredItems = inventoryItems.filter { item in
+            let openingStock = getQuantity(for: item, onOrBefore: startOfOpeningStock)
+            let closingStock = getQuantity(for: item, onOrBefore: monthDate)
+
+            // Show if opening stock > 0 OR if the quantity changed during the month
+            return openingStock > 0 || openingStock != closingStock
+        }
+
+        return List {
+            ForEach(filteredItems) { item in
                 let quantityForMonth = getQuantity(for: item, onOrBefore: monthDate)
                 InventoryItemRowView(item: item, quantityForMonth: quantityForMonth)
                     .contentShape(Rectangle())
@@ -98,6 +120,7 @@ struct InventoryListView: View {
             .onDelete(perform: confirmDeleteItems)
         }
     }
+    
     var body: some View {
             NavigationView {
                 inventoryListContent // Just call the new property here
