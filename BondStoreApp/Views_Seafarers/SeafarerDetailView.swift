@@ -31,12 +31,14 @@ struct SeafarerDetailView: View {
     @State private var editedDate = Date()
     @State private var showInventoryAlert = false
 
-    var inventoryItems: [InventoryItem]
+    @Query private var inventoryItems: [InventoryItem]
 
-    init(seafarer: Seafarer, inventoryItems: [InventoryItem]) {
+    init(seafarer: Seafarer) {
         self._seafarer = Bindable(wrappedValue: seafarer)
-        self.inventoryItems = inventoryItems
-        self._selectedItem = State(initialValue: nil)
+        let monthID = seafarer.monthlyData?.monthID
+        _inventoryItems = Query(filter: #Predicate {
+            $0.monthlyData?.monthID == monthID
+        })
     }
 
     // Helper function to calculate price with tax for non-representatives

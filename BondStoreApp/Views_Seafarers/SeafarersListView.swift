@@ -31,7 +31,7 @@ struct SeafarersListView: View {
                 // If this line causes an error, try `sorted(by: { $0.displayID < $1.displayID })`
                 ForEach(month.seafarers.sorted(using: SortDescriptor(\.displayID)), id: \.id) { seafarer in
                     VStack(alignment: .leading) {
-                        NavigationLink(destination: SeafarerDetailView(seafarer: seafarer, inventoryItems: month.inventoryItems)) {
+                        NavigationLink(destination: SeafarerDetailView(seafarer: seafarer)) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack {
@@ -118,6 +118,7 @@ struct SeafarersListView: View {
             rank: newRank.trimmingCharacters(in: .whitespacesAndNewlines),
             isRepresentative: newIsRepresentative
         )
+        seafarer.monthlyData = month // This line is crucial
 
         if month.seafarers.contains(where: { $0.displayID == seafarer.displayID }) {
             importFeedbackMessage = "A seafarer with ID '\(seafarer.displayID)' already exists. Please use a unique ID."
@@ -238,6 +239,7 @@ struct SeafarersListView: View {
                 }
 
                 let newSeafarer = Seafarer(displayID: displayID, name: name, rank: rank)
+                newSeafarer.monthlyData = month // This line is crucial
                 month.seafarers.append(newSeafarer)
                 modelContext.insert(newSeafarer)
                 importedCount += 1

@@ -43,9 +43,8 @@ struct MonthSelectorView: View {
                         }
                     }
 
-                    // Step 2: Copy seafarers and their distributions using inventory map
                     for oldSeafarer in prev.seafarers {
-                        let newSeafarer = oldSeafarer.deepCopy(using: inventoryMap)
+                        let newSeafarer = oldSeafarer.deepCopy() // Use the correct deepCopy
                         newMonthData.seafarers.append(newSeafarer)
                     }
                 }
