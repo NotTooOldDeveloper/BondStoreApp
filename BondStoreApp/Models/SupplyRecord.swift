@@ -14,9 +14,6 @@ class SupplyRecord {
     var date: Date
     var quantity: Int
 
-    // MARK: - PATCH APPLIED HERE
-    // When an InventoryItem is deleted, also delete its associated SupplyRecords.
-    @Relationship(deleteRule: .cascade)
     var inventoryItem: InventoryItem?
 
     init(date: Date, quantity: Int) {

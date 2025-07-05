@@ -17,8 +17,11 @@ class Seafarer {
     var totalSpent: Double
     var isRepresentative: Bool = false
 
-    @Relationship var distributions: [Distribution] = []
+    @Relationship(deleteRule: .cascade, inverse: \Distribution.seafarer)
+    var distributions: [Distribution] = []
 
+    var monthlyData: MonthlyData?
+    
     init(displayID: String, name: String, rank: String, totalSpent: Double = 0, isRepresentative: Bool = false) {
         self.id = UUID()
         self.displayID = displayID
@@ -30,7 +33,7 @@ class Seafarer {
 }
 
 extension Seafarer {
-    func deepCopy(using inventoryMap: [UUID: InventoryItem]) -> Seafarer {
+    func deepCopy() -> Seafarer {
         let clone = Seafarer(displayID: self.displayID, name: self.name, rank: self.rank, totalSpent: 0)
         clone.distributions = [] // ← start fresh, no distributions copied
         return clone

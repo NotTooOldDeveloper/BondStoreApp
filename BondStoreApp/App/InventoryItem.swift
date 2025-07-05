@@ -18,17 +18,14 @@ class InventoryItem {
     var receivedDate: Date
     var originalItemID: UUID? // This should be initialized for new items
 
-    // MARK: - Relationships (Crucial for deletion logic)
-
     // Ensure the 'inverse' is specified for both relationships
-    @Relationship(inverse: \SupplyRecord.inventoryItem) // Added inverse
+    @Relationship(deleteRule: .cascade, inverse: \SupplyRecord.inventoryItem)
     var supplies: [SupplyRecord] = []
 
-    // 🔴 YOU NEED TO ADD THIS LINE 🔴
-    @Relationship(inverse: \Distribution.inventoryItem)
+    @Relationship(deleteRule: .nullify, inverse: \Distribution.inventoryItem)
     var distributions: [Distribution] = []
 
-    // MARK: - Initializer
+    var monthlyData: MonthlyData?
 
     init(name: String, quantity: Int, pricePerUnit: Double, barcode: String? = nil, receivedDate: Date = Date()) {
         self.id = UUID()

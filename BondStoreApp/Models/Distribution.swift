@@ -16,11 +16,8 @@ class Distribution {
     var quantity: Int
     var unitPrice: Double
 
-    @Relationship var seafarer: Seafarer?
+    var seafarer: Seafarer?
 
-    // MARK: - PATCH APPLIED HERE
-    // When an InventoryItem is deleted, also delete its associated Distributions.
-    @Relationship(deleteRule: .cascade)
     var inventoryItem: InventoryItem?
 
     init(date: Date, itemName: String, quantity: Int, unitPrice: Double, seafarer: Seafarer?, inventoryItem: InventoryItem?) {
