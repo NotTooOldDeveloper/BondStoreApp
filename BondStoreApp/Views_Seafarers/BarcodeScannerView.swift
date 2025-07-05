@@ -7,7 +7,7 @@
 
 import SwiftUI
 import AVFoundation
-
+import SwiftData
 
 
 // Model representing scanned item before adding as distribution
@@ -23,7 +23,7 @@ struct BarcodeScannerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     
-    let inventoryItems: [InventoryItem]
+    @Query private var inventoryItems: [InventoryItem]
     let onAddDistributions: ([Distribution]) -> Void
 
     @State private var scannedItems: [ScannedItem] = []
@@ -146,9 +146,11 @@ struct BarcodeScannerView: View {
                 inventoryItem: scanned.inventoryItem
             )
             modelContext.insert(dist)
-            scanned.inventoryItem.quantity -= scanned.quantity
             distributions.append(dist)
         }
+        // Save all the changes made in the loop
+        try? modelContext.save()
+
         onAddDistributions(distributions)
         dismiss()
         dismissBoth = false

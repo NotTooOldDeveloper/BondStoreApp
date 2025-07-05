@@ -9,8 +9,8 @@ class MonthlyData {
     @Relationship(deleteRule: .cascade, inverse: \Seafarer.monthlyData)
     var seafarers: [Seafarer] = []
 
-    @Relationship(deleteRule: .cascade, inverse: \InventoryItem.monthlyData)
-    var inventoryItems: [InventoryItem] = []
+    //@Relationship(deleteRule: .cascade, inverse: \InventoryItem.monthlyData)
+    //var inventoryItems: [InventoryItem] = []
     
     init(monthID: String) {
         self.id = UUID()

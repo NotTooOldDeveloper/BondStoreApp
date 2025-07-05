@@ -27,9 +27,9 @@ struct MainTabView: View {
                         Label("Seafarers", systemImage: "person.3.fill")
                     }
             }
-
+            
             if let month = currentMonthData {
-                InventoryListView(month: month)
+                InventoryListView(monthID: month.monthID)
                     .tabItem {
                         Label("Inventory", systemImage: "shippingbox.fill")
                     }
@@ -39,11 +39,16 @@ struct MainTabView: View {
                         Label("Inventory", systemImage: "shippingbox.fill")
                     }
             }
-
+            
             ReportsView()
                 .tabItem {
                     Label("Reports", systemImage: "doc.plaintext")
                 }
+            DebugView()
+                .tabItem {
+                    Label("Debug", systemImage: "ladybug.fill")
+                }
+        
         }
         .background(Color("AppBackground"))
         .ignoresSafeArea(.all) // Ensures it covers the entire screen

@@ -2,11 +2,40 @@ import SwiftUI
 import AVFoundation
 import SwiftData
 
+
+// New, simpler view for displaying a single inventory row
+struct InventoryItemRowView: View {
+    let item: InventoryItem
+    let quantityForMonth: Int
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text(item.name)
+                    .font(.system(size: 18))
+                    .bold()
+                Text("Quantity: \(quantityForMonth)")
+            }
+            
+            Spacer()
+            
+            VStack(alignment: .leading) {
+                Text(String(format: "Price: €%.2f", item.pricePerUnit))
+                    .font(.system(size: 18))
+                    .bold(true)
+                Text(String(format: "Total: €%.2f", Double(quantityForMonth) * item.pricePerUnit))
+                    .foregroundStyle(Color.gray)
+            }
+        }
+    }
+}
+
 struct InventoryListView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.modelContext) private var modelContext
-    var month: MonthlyData // Assuming MonthlyData has a @Relationship for inventoryItems
-
+    @Query(sort: \InventoryItem.name) private var inventoryItems: [InventoryItem]
+    var monthID: String
+    
     @State private var showingAddEditSupply = false
     @State private var editingItem: InventoryItem?
 
@@ -25,10 +54,29 @@ struct InventoryListView: View {
     @State private var itemToDelete: InventoryItem?
     @State private var showingDistributionExistsAlert = false
 
+    private func getQuantity(for item: InventoryItem, onOrBefore date: Date) -> Int {
+        let itemID = item.id // Capture the ID before the predicate.
+
+        // 1. Create a predicate for supplies
+        let supplyPredicate = #Predicate<SupplyRecord> {
+            $0.inventoryItem?.id == itemID && $0.date <= date
+        }
+        let totalSupplied = (try? modelContext.fetch(FetchDescriptor(predicate: supplyPredicate)))?.reduce(0) { $0 + $1.quantity } ?? 0
+
+        // 2. Create a predicate for distributions
+        let distributionPredicate = #Predicate<Distribution> {
+            $0.inventoryItem?.id == itemID && $0.date <= date
+        }
+        let totalDistributed = (try? modelContext.fetch(FetchDescriptor(predicate: distributionPredicate)))?.reduce(0) { $0 + $1.quantity } ?? 0
+
+        // 3. The current quantity is the difference
+        return totalSupplied - totalDistributed
+    }
+    
     private var monthDate: Date {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM"
-        return formatter.date(from: month.monthID) ?? Date()
+        return formatter.date(from: self.monthID) ?? Date()
     }
 
     private func formattedMonthName(from date: Date) -> String {
@@ -36,35 +84,24 @@ struct InventoryListView: View {
         formatter.dateFormat = "LLLL"
         return formatter.string(from: date)
     }
-
-    var body: some View {
-        NavigationView {
-            List {
-                ForEach(month.inventoryItems.sorted(by: { $0.name < $1.name }), id: \.id) { item in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(item.name)
-                                .font(.system(size: 18))
-                                .bold()
-                            Text("Quantity: \(item.quantity)")
-                        }
-                        Spacer()
-                        VStack(alignment: .leading) {
-                            Text(String(format: "Price: €%.2f", item.pricePerUnit))
-                                .font(.system(size: 18))
-                                .bold(true)
-                            Text(String(format: "Total: €%.2f", Double(item.quantity) * item.pricePerUnit))
-                                .foregroundStyle(Color.gray)
-                        }
-                    }
-                    .contentShape(Rectangle()) // Makes the whole row tappable
+    
+    private var inventoryListContent: some View {
+        List {
+            ForEach(inventoryItems) { item in
+                let quantityForMonth = getQuantity(for: item, onOrBefore: monthDate)
+                InventoryItemRowView(item: item, quantityForMonth: quantityForMonth)
+                    .contentShape(Rectangle())
                     .onTapGesture {
                         startEditing(item)
                     }
-                }
-                .onDelete(perform: confirmDeleteItems) // Modified to confirm before delete
             }
-            .navigationTitle("Inventory – \(formattedMonthName(from: monthDate))")
+            .onDelete(perform: confirmDeleteItems)
+        }
+    }
+    var body: some View {
+            NavigationView {
+                inventoryListContent // Just call the new property here
+                    .navigationTitle("Inventory – \(formattedMonthName(from: monthDate))")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
@@ -108,11 +145,16 @@ struct InventoryListView: View {
                 NavigationView {
                     Form {
                         TextField("Name", text: $itemName)
-                        TextField("Quantity", text: $itemQuantity)
-                            .keyboardType(.numberPad)
                         TextField("Price", text: $itemPrice)
                             .keyboardType(.decimalPad)
-                        DatePicker("Date Received", selection: $itemReceivedDate, displayedComponents: .date)
+
+                        // Only show Quantity and Date fields when ADDING a new item, not editing.
+                        if editingItem == nil {
+                            TextField("Quantity", text: $itemQuantity)
+                                .keyboardType(.numberPad)
+                            DatePicker("Date Received", selection: $itemReceivedDate, displayedComponents: .date)
+                        }
+
                         HStack {
                             TextField("Barcode", text: $itemBarcode)
                             Button("Scan") {
@@ -143,8 +185,7 @@ struct InventoryListView: View {
                 }
             }
             .sheet(isPresented: $showingInventoryBarcodeScanner) {
-                // Ensure InventoryBarcodeScannerView can handle adding items and linking to month
-                InventoryBarcodeScannerView(month: month, existingBarcodes: month.inventoryItems.compactMap { $0.barcode ?? "" })
+                InventoryBarcodeScannerView()
             }
         }
     }
@@ -162,10 +203,13 @@ struct InventoryListView: View {
     private func startEditing(_ item: InventoryItem) {
         editingItem = item
         itemName = item.name
-        itemQuantity = String(item.quantity)
         itemBarcode = item.barcode ?? ""
         itemPrice = String(format: "%.2f", item.pricePerUnit)
-        itemReceivedDate = item.receivedDate
+
+        // Quantity and date are no longer part of editing an item's details
+        itemQuantity = ""
+        itemReceivedDate = Date()
+
         showingAddEditSupply = true
     }
 
@@ -174,34 +218,21 @@ struct InventoryListView: View {
         let price = Double(itemPrice) ?? 0.0
 
         if let item = editingItem {
-            let oldQty = item.quantity
+            // When editing, we only update the item's core details.
+            // Quantity is now handled separately by creating new supplies.
             item.name = itemName
             item.pricePerUnit = price
             item.barcode = itemBarcode.isEmpty ? nil : itemBarcode
-            item.receivedDate = itemReceivedDate
-
-            let suppliedAmount = newQty - oldQty
-
-            item.quantity = newQty // Update item quantity directly
-
-            if suppliedAmount > 0 {
-                let supply = SupplyRecord(date: itemReceivedDate, quantity: suppliedAmount)
-                supply.inventoryItem = item
-                item.supplies.append(supply)
-                modelContext.insert(supply)
-            }
         } else {
-            let newItem = InventoryItem(name: itemName, quantity: newQty, pricePerUnit: price, receivedDate: itemReceivedDate)
+            // The quantity property on the item itself is not set directly.
+            // It is determined by its transactions.
+            let newItem = InventoryItem(name: itemName, pricePerUnit: price, receivedDate: itemReceivedDate)
             newItem.barcode = itemBarcode.isEmpty ? nil : itemBarcode
-            newItem.originalItemID = newItem.id // Set originalItemID for brand new items
 
             let initialSupply = SupplyRecord(date: itemReceivedDate, quantity: newQty)
-            initialSupply.inventoryItem = newItem
-            newItem.supplies.append(initialSupply)
-            modelContext.insert(initialSupply)
-
-            modelContext.insert(newItem)
-            month.inventoryItems.append(newItem)
+            initialSupply.inventoryItem = newItem // Link supply to item
+            modelContext.insert(newItem)     // Insert the new master item
+            modelContext.insert(initialSupply) // Insert its initial supply record
         }
 
         do {
@@ -221,8 +252,6 @@ struct InventoryListView: View {
         }
     }
 
-    // MARK: - Deletion Logic
-
     // This function is called by the .onDelete swipe action
     private func confirmDeleteItems(at offsets: IndexSet) {
         // Since we want to check each item before deleting, iterate through the offsets.
@@ -231,10 +260,10 @@ struct InventoryListView: View {
         var itemsToConfirm: [InventoryItem] = []
 
         for index in offsets {
-            let item = month.inventoryItems[index]
+            let item = inventoryItems[index]
             // IMPORTANT: Ensure your InventoryItem model has @Relationship var distributions: [Distribution] = []
             // AND @Relationship var supplies: [SupplyRecord] = [] for these checks to work.
-            if !item.distributions.isEmpty || !item.supplies.isEmpty {
+            if !item.distributions.isEmpty {
                 itemsCannotBeDeleted = true
                 break // Found an item that blocks deletion, so stop checking and show general alert
             }
@@ -259,10 +288,8 @@ struct InventoryListView: View {
     
     // New function to handle the actual deletion of a single item
     private func deleteSingleItem(_ item: InventoryItem) {
-        if let index = month.inventoryItems.firstIndex(where: { $0.id == item.id }) {
+        if inventoryItems.contains(item) {
             modelContext.delete(item)
-            month.inventoryItems.remove(at: index)
-
             do {
                 try modelContext.save()
             } catch {

@@ -127,10 +127,7 @@ struct CrewDistributionReportView: View {
 
         for seafarer in seafarersWithDistributions.sorted(by: { $0.displayID < $1.displayID }) {
             for dist in seafarer.distributions.sorted(by: { $0.date < $1.date }) {
-                func priceWithTax(for seafarer: Seafarer, basePrice: Double) -> Double {
-                    seafarer.isRepresentative ? basePrice : basePrice * 1.10
-                }
-                let totalPrice = Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
+                let totalPrice = Double(dist.quantity) * self.priceWithTax(for: seafarer, basePrice: dist.unitPrice)
                 let line = "\(seafarer.displayID),\"\(seafarer.name)\",\(dist.date.formatted(date: .numeric, time: .omitted)),\"\(dist.itemName)\",\(dist.quantity),\(String(format: "%.2f", dist.unitPrice)),\(String(format: "%.2f", totalPrice))\n"
                 csvString.append(line)
             }

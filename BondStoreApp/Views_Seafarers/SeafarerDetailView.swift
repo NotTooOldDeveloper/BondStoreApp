@@ -14,14 +14,11 @@ struct SeafarerDetailView: View {
 
     @State private var showingAddDistribution = false
     @State private var showingBarcodeScanner = false
-
     @State private var isEditingSeafarer = false
     @State private var editName = ""
     @State private var editID = "" // This var is correctly used for editing
     @State private var editRank = ""
     @State private var editIsRepresentative = false
-
-    // Form state for new distribution
     @State private var selectedItem: InventoryItem?
     @State private var quantityString = ""
     @State private var selectedDate = Date()
@@ -31,14 +28,10 @@ struct SeafarerDetailView: View {
     @State private var editedDate = Date()
     @State private var showInventoryAlert = false
 
-    @Query private var inventoryItems: [InventoryItem]
+    @Query(sort: \InventoryItem.name) private var inventoryItems: [InventoryItem]
 
     init(seafarer: Seafarer) {
         self._seafarer = Bindable(wrappedValue: seafarer)
-        let monthID = seafarer.monthlyData?.monthID
-        _inventoryItems = Query(filter: #Predicate {
-            $0.monthlyData?.monthID == monthID
-        })
     }
 
     // Helper function to calculate price with tax for non-representatives
@@ -51,8 +44,25 @@ struct SeafarerDetailView: View {
             partialSum + Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
         }
     }
+    
+    private func getQuantity(for item: InventoryItem, onOrBefore date: Date) -> Int {
+        let itemID = item.id
+
+        let supplyPredicate = #Predicate<SupplyRecord> {
+            $0.inventoryItem?.id == itemID && $0.date <= date
+        }
+        let totalSupplied = (try? modelContext.fetch(FetchDescriptor(predicate: supplyPredicate)))?.reduce(0) { $0 + $1.quantity } ?? 0
+
+        let distributionPredicate = #Predicate<Distribution> {
+            $0.inventoryItem?.id == itemID && $0.date <= date
+        }
+        let totalDistributed = (try? modelContext.fetch(FetchDescriptor(predicate: distributionPredicate)))?.reduce(0) { $0 + $1.quantity } ?? 0
+
+        return totalSupplied - totalDistributed
+    }
 
     var body: some View {
+        
         VStack(alignment: .leading) { // Removed 'spacing: 16'
             VStack { // Removed 'spacing: 4'
                 Text(seafarer.name)
@@ -128,7 +138,7 @@ struct SeafarerDetailView: View {
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
-                                dist.inventoryItem?.quantity += dist.quantity
+
                                 seafarer.totalSpent -= Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
                                 if let index = seafarer.distributions.firstIndex(of: dist) {
                                     seafarer.distributions.remove(at: index)
@@ -206,8 +216,9 @@ struct SeafarerDetailView: View {
                                 let selectedItem = selectedItem,
                                 let qty = Int(quantityString),
                                 qty > 0,
-                                selectedItem.quantity >= qty
+                                getQuantity(for: selectedItem, onOrBefore: Date()) >= qty // Check calculated quantity
                             else {
+                                showInventoryAlert = true // Show an alert if not enough stock
                                 return
                             }
 
@@ -222,11 +233,6 @@ struct SeafarerDetailView: View {
                             print("🪪 Creating distribution for item: \(selectedItem.name), originalItemID: \(selectedItem.originalItemID?.uuidString ?? "nil")")
                             modelContext.insert(distribution)
 
-                            // Link distribution to seafarer (already done by `seafarer: seafarer` in init)
-                            // seafarer.distributions.append(distribution) // This line is not strictly needed if relationship is setup, but doesn't hurt.
-
-                            // Update inventory quantity
-                            selectedItem.quantity -= qty
 
                             // Update seafarer's total spent
                             seafarer.totalSpent += Double(qty) * priceWithTax(for: seafarer, basePrice: selectedItem.pricePerUnit)
@@ -271,8 +277,7 @@ struct SeafarerDetailView: View {
                 }
                 .sheet(isPresented: $showingBarcodeScanner) {
                     BarcodeScannerView(
-                        dismissBoth: $showingAddDistribution,
-                        inventoryItems: inventoryItems
+                        dismissBoth: $showingAddDistribution
                     ) { scannedDistributions in
                         for dist in scannedDistributions {
                             dist.seafarer = seafarer
@@ -324,11 +329,12 @@ struct SeafarerDetailView: View {
                             }
                             let quantityDifference = newQuantity - dist.quantity
                             if let inventoryItem = dist.inventoryItem {
-                                if inventoryItem.quantity < quantityDifference {
+                                // Check against the current calculated quantity
+                                if getQuantity(for: inventoryItem, onOrBefore: Date()) < quantityDifference {
                                     showInventoryAlert = true
                                     return
                                 }
-                                inventoryItem.quantity -= quantityDifference
+                                // DO NOT manually change the quantity. The transaction records do this automatically.
                             }
                             seafarer.totalSpent += Double(quantityDifference) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
                             dist.quantity = newQuantity

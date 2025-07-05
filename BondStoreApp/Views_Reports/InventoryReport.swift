@@ -24,12 +24,7 @@ struct InventoryReportView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var appState: AppState // Assuming AppState manages selectedMonthID
 
-    @Query<MonthlyData>(filter: nil, sort: []) private var allMonthlyData: [MonthlyData]
-    
-    private var monthlyDataForReport: [MonthlyData] {
-        guard let selectedMonthID = appState.selectedMonthID else { return [] }
-        return allMonthlyData.filter { $0.monthID == selectedMonthID }
-    }
+    @Query(sort: \InventoryItem.name) private var inventoryItems: [InventoryItem]
 
     @State private var finalReportItems: [InventoryReportItem] = []
     @State private var errorMessage: String?
@@ -77,10 +72,6 @@ struct InventoryReportView: View {
                             .padding()
                     } else if appState.selectedMonthID == nil {
                         Text("Please select a month to view the inventory report.")
-                            .foregroundColor(.secondary)
-                            .padding()
-                    } else if monthlyDataForReport.isEmpty {
-                        Text("No monthly data found for \(formattedMonthYear(from: appState.selectedMonthID ?? "")). Please ensure data exists for this month.")
                             .foregroundColor(.secondary)
                             .padding()
                     } else if finalReportItems.isEmpty {
@@ -148,11 +139,11 @@ struct InventoryReportView: View {
                 .fill(Color.blue.opacity(0.3))
                 .overlay(
                     HStack {
-                        Text("Total value in \(formattedMonthName(from: Date()))")
+                        Text("Total Value")
                             .font(.title3.bold())
                             .foregroundColor(Color("Name1"))
                         Spacer()
-                        Text("$\(finalReportItems.reduce(0) { $0 + $1.totalValue }, specifier: "%.2f")")
+                        Text(finalReportItems.reduce(0) { $0 + $1.totalValue }, format: .currency(code: "EUR"))
                             .font(.title3.bold())
                             .foregroundColor(Color("Sum"))
                     }
@@ -170,12 +161,15 @@ struct InventoryReportView: View {
         .onChange(of: appState.selectedMonthID) {
             generateReport()
         }
-        .onChange(of: allMonthlyData) {
-            generateReport()
-        }
         .sheet(item: $csvFileURLWrapper) { wrapper in
             ActivityViewController(activityItems: [wrapper.url])
         }
+    }
+    
+    private func formattedMonthName(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "LLLL" // e.g., "July"
+        return formatter.string(from: date)
     }
     
     // MARK: - CSV Export
@@ -214,113 +208,75 @@ struct InventoryReportView: View {
         }
     }
 
-    // MARK: - Report Generation Logic
     private func generateReport() {
         isLoadingReport = true
         errorMessage = nil
 
         Task { @MainActor in
+            guard let monthID = appState.selectedMonthID else {
+                finalReportItems = []
+                isLoadingReport = false
+                return
+            }
+
             do {
-                guard let currentMonthID = appState.selectedMonthID else {
-                    finalReportItems = []
-                    isLoadingReport = false
-                    return
-                }
-
-                guard let currentMonthlyData = monthlyDataForReport.first else {
-                    finalReportItems = []
-                    isLoadingReport = false
-                    return
-                }
-
-                let currentMonthStartDate: Date
-                let currentMonthEndDate: Date
-                (currentMonthStartDate, currentMonthEndDate) = try dateRange(forMonthID: currentMonthID)
-
-                var previousMonthlyData: MonthlyData? = nil
-                let previousMonthID = try calculatePreviousMonthID(from: currentMonthID)
-                
-                if let prevID = previousMonthID {
-                    let previousMonthFetch = FetchDescriptor<MonthlyData>(
-                        predicate: #Predicate { $0.monthID == prevID }
-                    )
-                    previousMonthlyData = try modelContext.fetch(previousMonthFetch).first
-                }
-                
-                var currentMonthInventoryMap: [UUID: Int] = [:]
-                var previousMonthInventoryMap: [UUID: Int] = [:]
-                var currentMonthDistributionsMap: [UUID: Int] = [:]
-                var currentMonthSuppliesMap: [UUID: Int] = [:]
-                var itemNameMap: [UUID: String] = [:]
-                var itemPriceMap: [UUID: Double] = [:] // New: Store item prices
-
-                // Populate previousMonthInventoryMap and itemPriceMap
-                previousMonthlyData?.inventoryItems.forEach { item in
-                    let originalID = item.originalItemID ?? item.id
-                    previousMonthInventoryMap[originalID] = item.quantity
-                    if itemNameMap[originalID] == nil {
-                        itemNameMap[originalID] = item.name
-                    }
-                    itemPriceMap[originalID] = item.pricePerUnit // Assuming InventoryItem has a 'price' property
-                }
-
-                currentMonthlyData.inventoryItems.forEach { item in
-                    let originalID = item.originalItemID ?? item.id
-                    currentMonthInventoryMap[originalID] = item.quantity
-                    itemNameMap[originalID] = item.name
-                    itemPriceMap[originalID] = item.pricePerUnit // Assuming InventoryItem has a 'price' property
-
-                    item.supplies.forEach { supply in
-                        if supply.date >= currentMonthStartDate && supply.date < currentMonthEndDate {
-                            currentMonthSuppliesMap[originalID, default: 0] += supply.quantity
-                        }
-                    }
-                }
-
-                currentMonthlyData.seafarers.flatMap { $0.distributions }.forEach { dist in
-                    if let originalID = dist.inventoryItem?.originalItemID ?? dist.inventoryItem?.id {
-                        if dist.date >= currentMonthStartDate && dist.date < currentMonthEndDate {
-                            currentMonthDistributionsMap[originalID, default: 0] += dist.quantity
-                        }
-                    }
-                }
-
-                let allOriginalItemIDs: Set<UUID> = Set(currentMonthInventoryMap.keys)
+                let (startOfMonth, endOfMonth) = try dateRange(forMonthID: monthID)
+                let startOfOpeningStock = Calendar.current.date(byAdding: .second, value: -1, to: startOfMonth)!
 
                 var newReportItems: [InventoryReportItem] = []
-                for originalID in allOriginalItemIDs {
-                    let itemName = itemNameMap[originalID] ?? "Unknown Item"
-                    let openingStock = previousMonthInventoryMap[originalID] ?? 0
-                    let suppliesReceived = currentMonthSuppliesMap[originalID] ?? 0
-                    let distributedStock = currentMonthDistributionsMap[originalID] ?? 0
-                    let closingStock = openingStock + suppliesReceived - distributedStock
-                    
-                    let pricePerItem = itemPriceMap[originalID] ?? 0.0 // Default to 0.0 if no price
-                    let totalValue = Double(closingStock) * pricePerItem // Calculate total value
 
-                    newReportItems.append(InventoryReportItem(
-                        name: itemName,
-                        openingStock: openingStock,
-                        suppliesReceived: suppliesReceived,
-                        distributedStock: distributedStock,
-                        closingStock: closingStock,
-                        pricePerItem: pricePerItem,
-                        totalValue: totalValue,
-                        originalItemID: originalID
-                    ))
+                for item in inventoryItems {
+                    // Calculate totals using the item's complete transaction history
+                    let openingStock = getQuantity(for: item, onOrBefore: startOfOpeningStock)
+                    let suppliesReceived = item.supplies.filter { $0.date >= startOfMonth && $0.date < endOfMonth }.reduce(0) { $0 + $1.quantity }
+                    let distributedStock = item.distributions.filter { $0.date >= startOfMonth && $0.date < endOfMonth }.reduce(0) { $0 + $1.quantity }
+                    let closingStock = openingStock + suppliesReceived - distributedStock
+
+                    // Only include items that were in stock or had activity this month
+                    if openingStock > 0 || suppliesReceived > 0 || distributedStock > 0 {
+                        let reportItem = InventoryReportItem(
+                            name: item.name,
+                            openingStock: openingStock,
+                            suppliesReceived: suppliesReceived,
+                            distributedStock: distributedStock,
+                            closingStock: closingStock,
+                            pricePerItem: item.pricePerUnit,
+                            totalValue: Double(closingStock) * item.pricePerUnit,
+                            originalItemID: item.originalItemID ?? item.id
+                        )
+                        newReportItems.append(reportItem)
+                    }
                 }
-                
+
                 self.finalReportItems = newReportItems
-                self.isLoadingReport = false
 
             } catch {
                 self.errorMessage = error.localizedDescription
-                self.isLoadingReport = false
-                print("Error generating report: \(error)")
             }
+
+            self.isLoadingReport = false
         }
     }
+    
+    private func getQuantity(for item: InventoryItem, onOrBefore date: Date) -> Int {
+        let itemID = item.id // Capture the ID before the predicate.
 
+        // 1. Create a simpler predicate for supplies
+        let supplyPredicate = #Predicate<SupplyRecord> {
+            $0.inventoryItem?.id == itemID && $0.date <= date
+        }
+        let totalSupplied = (try? modelContext.fetch(FetchDescriptor(predicate: supplyPredicate)))?.reduce(0) { $0 + $1.quantity } ?? 0
+
+        // 2. Create a simpler predicate for distributions
+        let distributionPredicate = #Predicate<Distribution> {
+            $0.inventoryItem?.id == itemID && $0.date <= date
+        }
+        let totalDistributed = (try? modelContext.fetch(FetchDescriptor(predicate: distributionPredicate)))?.reduce(0) { $0 + $1.quantity } ?? 0
+
+        // 3. The current quantity is the difference
+        return totalSupplied - totalDistributed
+    }
+    
     // MARK: - Helper Functions
     // (These helper functions remain the same as your original code)
 
@@ -399,9 +355,3 @@ struct ActivityViewController: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
-
-    private func formattedMonthName(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "LLLL yyyy"
-        return formatter.string(from: date)
-    }

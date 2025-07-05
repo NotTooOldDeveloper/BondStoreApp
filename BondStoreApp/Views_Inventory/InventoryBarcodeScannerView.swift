@@ -15,6 +15,7 @@
 import SwiftUI
 import AVFoundation
 import AudioToolbox
+import SwiftData
 
 // Model for scanned inventory item before adding
 struct ScannedInventoryItem: Identifiable, Equatable {
@@ -32,12 +33,9 @@ struct IdentifiableBarcode: Identifiable, Equatable {
 }
 
 struct InventoryBarcodeScannerView: View {
-    var month: MonthlyData
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-
-    // Existing inventory barcodes to avoid duplicates if needed
-    let existingBarcodes: [String]
+    @Query private var inventoryItems: [InventoryItem]
 
     @State private var scannedItems: [ScannedInventoryItem] = []
     @State private var currentBarcode: IdentifiableBarcode? = nil
@@ -139,7 +137,7 @@ struct InventoryBarcodeScannerView: View {
         }
     }
     private func handleScan(code: String) {
-        if existingBarcodes.contains(code) {
+        if inventoryItems.contains(where: { $0.barcode == code }) {
             duplicateBarcode = code
             showDuplicateAlert = true
             AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
@@ -179,25 +177,30 @@ struct InventoryBarcodeScannerView: View {
     }
 
     private func finalizeAdding() {
-        DispatchQueue.main.async {
-            for item in scannedItems {
-                let newInventoryItem = InventoryItem(
-                    name: item.name,
-                    quantity: item.quantity,
-                    pricePerUnit: item.pricePerUnit,
-                    barcode: item.barcode,
-                    receivedDate: item.dateReceived
-                )
-                modelContext.insert(newInventoryItem)
-                month.inventoryItems.append(newInventoryItem)
-            }
-            do {
-                try modelContext.save()
-            } catch {
-                print("Failed to save inventory items: \(error)")
-            }
-            dismiss()
+        for item in scannedItems {
+            // Create the master item WITHOUT a quantity
+            let newInventoryItem = InventoryItem(
+                name: item.name,
+                pricePerUnit: item.pricePerUnit,
+                barcode: item.barcode,
+                receivedDate: item.dateReceived
+            )
+            
+            // Create the FIRST supply transaction for this item
+            let initialSupply = SupplyRecord(date: item.dateReceived, quantity: item.quantity)
+            initialSupply.inventoryItem = newInventoryItem // Link the supply to the item
+            
+            // Insert both into the database
+            modelContext.insert(newInventoryItem)
+            modelContext.insert(initialSupply)
         }
+        
+        do {
+            try modelContext.save()
+        } catch {
+            print("Failed to save inventory items: \(error)")
+        }
+        dismiss()
     }
 }
 

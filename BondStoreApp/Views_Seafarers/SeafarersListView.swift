@@ -112,25 +112,29 @@ struct SeafarersListView: View {
 
     // MARK: - Seafarer Management Actions
     private func addNewSeafarer() {
+        let trimmedID = newID.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 1. Check for duplicates BEFORE adding the new seafarer to the month.
+        if month.seafarers.contains(where: { $0.displayID == trimmedID }) {
+            importFeedbackMessage = "A seafarer with ID '\(trimmedID)' already exists. Please use a unique ID."
+            showingImportAlert = true
+            return
+        }
+        
+        // 2. If no duplicate is found, create and link the new seafarer.
         let seafarer = Seafarer(
-            displayID: newID.trimmingCharacters(in: .whitespacesAndNewlines),
+            displayID: trimmedID,
             name: newName.trimmingCharacters(in: .whitespacesAndNewlines),
             rank: newRank.trimmingCharacters(in: .whitespacesAndNewlines),
             isRepresentative: newIsRepresentative
         )
-        seafarer.monthlyData = month // This line is crucial
+        seafarer.monthlyData = month // Set the relationship
 
-        if month.seafarers.contains(where: { $0.displayID == seafarer.displayID }) {
-            importFeedbackMessage = "A seafarer with ID '\(seafarer.displayID)' already exists. Please use a unique ID."
-            showingImportAlert = true
-            return
-        }
-
-        month.seafarers.append(seafarer)
+        // 3. Insert and Save.
         modelContext.insert(seafarer)
         
         do {
-            try modelContext.save() // Explicitly save after adding
+            try modelContext.save()
             print("🟢 Successfully added new seafarer and saved context.")
         } catch {
             print("🔴 Failed to save context after adding seafarer: \(error.localizedDescription)")

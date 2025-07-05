@@ -33,18 +33,10 @@ struct MonthSelectorView: View {
                 let newMonthData = MonthlyData(monthID: month)
 
                 if let prev = previousMonthData {
-                    // Step 1: Copy inventory and build mapping
-                    var inventoryMap: [UUID: InventoryItem] = [:]
-                    for oldItem in prev.inventoryItems {
-                        if oldItem.quantity > 0 {
-                            let newItem = oldItem.deepCopy()
-                            inventoryMap[oldItem.id] = newItem
-                            newMonthData.inventoryItems.append(newItem)
-                        }
-                    }
-
+                    // Copy seafarers with reset totals
                     for oldSeafarer in prev.seafarers {
-                        let newSeafarer = oldSeafarer.deepCopy() // Use the correct deepCopy
+                        let newSeafarer = oldSeafarer.deepCopy()
+                        newSeafarer.monthlyData = newMonthData // Set the inverse relationship
                         newMonthData.seafarers.append(newSeafarer)
                     }
                 }
@@ -154,11 +146,6 @@ struct MonthSelectorView: View {
             .onAppear {
                 loadAvailableMonths()
                 selectedMonth = appState.selectedMonthID
-
-                // 🔄 Recalculate when this view appears again after editing a month
-                if let selectedMonthID = appState.selectedMonthID {
-                    recalculateFutureMonths(startMonthID: selectedMonthID)
-                }
             }
 
             .onChange(of: appState.selectedMonthID) { newValue, _ in
@@ -202,125 +189,6 @@ struct MonthSelectorView: View {
         }
     }
 
-    func totalDistributed(item: InventoryItem, in month: MonthlyData) -> Int {
-        // Fetch and sum all Distribution records tied to this item and month
-        let matchingDistributions = month.seafarers
-            .flatMap { $0.distributions }
-            .filter {
-                // This condition checks if the distribution's inventory item (which might be a copied instance)
-                // matches the original item ID of the current item being processed.
-                let match = $0.inventoryItem?.originalItemID == item.originalItemID
-                // Debugging print statement:
-                print("🔍 Matching item '\(item.name)' (origID: \(item.originalItemID?.uuidString ?? "nil")) to distribution '\($0.inventoryItem?.name ?? "-")' (origID: \($0.inventoryItem?.originalItemID?.uuidString ?? "nil")), match: \(match)")
-                return match
-            }
-
-        return matchingDistributions.reduce(0) { $0 + $1.quantity }
-    }
-
-
-    func recalculateFutureMonths(startMonthID: String) {
-        Task {
-            do {
-                let futureRequest = FetchDescriptor<MonthlyData>(
-                    predicate: #Predicate<MonthlyData> { $0.monthID > startMonthID },
-                    sortBy: [SortDescriptor(\.monthID)]
-                )
-                let futureMonths = try modelContext.fetch(futureRequest)
-
-                let sourceRequest = FetchDescriptor<MonthlyData>(
-                    predicate: #Predicate<MonthlyData> { $0.monthID == startMonthID }
-                )
-                guard let sourceMonth = try modelContext.fetch(sourceRequest).first else { return }
-
-                // Define a struct to hold all relevant source item properties
-                struct SourceItemProperties {
-                    let quantity: Int
-                    let name: String
-                    let pricePerUnit: Double
-                    let barcode: String?
-                    let receivedDate: Date
-                }
-
-                // Create lookup by item original ID from updated source
-                let sourceItemsByID = Dictionary(
-                    uniqueKeysWithValues: sourceMonth.inventoryItems.map { item in
-                        (item.originalItemID ?? item.id, SourceItemProperties(
-                            quantity: item.quantity,
-                            name: item.name,
-                            pricePerUnit: item.pricePerUnit,
-                            barcode: item.barcode,
-                            receivedDate: item.receivedDate
-                        ))
-                    }
-                )
-
-                for futureMonth in futureMonths {
-                    print("📅 Recalculating month: \(futureMonth.monthID)")
-
-                    for item in futureMonth.inventoryItems {
-                        print("🔧 Item: \(item.name), origID: \(item.originalItemID?.uuidString ?? "nil")")
-
-                        // Look up all properties from the source month using the originalItemID.
-                        if let sourceProps = sourceItemsByID[item.originalItemID ?? item.id] {
-                            var changedProperties: [String] = [] // To log what actually changed
-
-                            // 1. Update Quantity (if changed)
-                            let usedQty = totalDistributed(item: item, in: futureMonth)
-                            let newCalculatedQty = max(sourceProps.quantity - usedQty, 0)
-                            if item.quantity != newCalculatedQty {
-                                item.quantity = newCalculatedQty
-                                changedProperties.append("quantity")
-                            }
-
-                            // 2. Update Name (if changed)
-                            if item.name != sourceProps.name {
-                                item.name = sourceProps.name
-                                changedProperties.append("name")
-                            }
-
-                            // 3. Update Price Per Unit (if changed)
-                            if item.pricePerUnit != sourceProps.pricePerUnit {
-                                item.pricePerUnit = sourceProps.pricePerUnit
-                                changedProperties.append("pricePerUnit")
-                            }
-
-                            // 4. Update Barcode (if changed)
-                            if item.barcode != sourceProps.barcode {
-                                item.barcode = sourceProps.barcode
-                                changedProperties.append("barcode")
-                            }
-
-                            // 5. Update Received Date (if changed)
-                            if item.receivedDate != sourceProps.receivedDate {
-                                item.receivedDate = sourceProps.receivedDate
-                                changedProperties.append("receivedDate")
-                            }
-
-
-                            if changedProperties.isEmpty {
-                                print("📦 → No properties changed for \(item.name)")
-                            } else {
-                                print("📦 → Updated properties for \(item.name): \(changedProperties.joined(separator: ", "))")
-                                print("    New Values: Qty: \(item.quantity), Name: \(item.name), Price: \(item.pricePerUnit), Barcode: \(item.barcode ?? "nil"), Received Date: \(item.receivedDate)")
-                            }
-
-                        } else {
-                            print("⚠️ → No match found for \(item.name) (originalItemID: \(item.originalItemID?.uuidString ?? "nil")) in source month \(sourceMonth.monthID)")
-                            // Consider what to do if an item from a future month no longer exists in the source month.
-                            // Options: Set quantity to 0, remove the item, or leave it as is (current behavior).
-                            // For now, we'll just log it.
-                        }
-                    }
-                }
-
-                try modelContext.save()
-            } catch {
-                print("❌ Error recalculating future months: \(error)")
-            }
-        }
-    }
-
     func selectMonth(_ month: String) {
         selectedMonth = month
     }
@@ -334,21 +202,31 @@ struct MonthSelectorView: View {
     }
 
     func deleteMonths(at offsets: IndexSet) {
-        for index in offsets {
-            let monthToDelete = availableMonths[index]
+        // 1. Collect all the month IDs to be deleted
+        let monthsToDelete = offsets.map { availableMonths[$0] }
 
-            // Fetch MonthlyData for this monthToDelete and delete it
-            let fetchRequest = FetchDescriptor<MonthlyData>(predicate: #Predicate<MonthlyData> { $0.monthID == monthToDelete })
+        // 2. Perform the deletion from the database
+        for monthID in monthsToDelete {
+            let fetchRequest = FetchDescriptor<MonthlyData>(predicate: #Predicate { $0.monthID == monthID })
             if let monthData = try? modelContext.fetch(fetchRequest).first {
                 modelContext.delete(monthData)
             }
+        }
 
-            availableMonths.remove(at: index)
+        // 3. Save the changes once after all deletions
+        do {
+            try modelContext.save()
+        } catch {
+            print("Failed to save context after deleting months: \(error)")
+        }
 
-            if selectedMonth == monthToDelete {
-                selectedMonth = nil
-                appState.selectedMonthID = nil
-            }
+        // 4. Safely update the UI by reloading the list from the database
+        loadAvailableMonths()
+        
+        // 5. Sensibly reset the selection
+        if !availableMonths.contains(selectedMonth ?? "") {
+            selectedMonth = availableMonths.last
+            appState.selectedMonthID = availableMonths.last
         }
     }
 }
