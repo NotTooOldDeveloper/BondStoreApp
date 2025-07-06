@@ -30,6 +30,50 @@ struct InventoryItemRowView: View {
     }
 }
 
+// New view to find and select a UNIQUE item name
+struct ItemFinderView: View {
+    @Environment(\.dismiss) var dismiss
+    @Query private var allItems: [InventoryItem]
+    @State private var searchText = ""
+    
+    // This closure will pass the selected NAME back
+    var onNameSelected: (String) -> Void
+
+    // This property now creates a sorted list of unique names
+    var uniqueSortedNames: [String] {
+        let allNames = allItems.map { $0.name }
+        let uniqueNames = Set(allNames)
+        return Array(uniqueNames).sorted()
+    }
+
+    var searchResults: [String] {
+        if searchText.isEmpty {
+            return uniqueSortedNames
+        } else {
+            return uniqueSortedNames.filter { $0.lowercased().contains(searchText.lowercased()) }
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(searchResults, id: \.self) { name in
+                Button(name) {
+                    onNameSelected(name)
+                    dismiss()
+                }
+                .foregroundColor(.primary)
+            }
+            .searchable(text: $searchText)
+            .navigationTitle("Find Existing Name")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
 struct InventoryListView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.modelContext) private var modelContext
@@ -38,8 +82,8 @@ struct InventoryListView: View {
     
     @State private var showingAddEditSupply = false
     @State private var editingItem: InventoryItem?
+    @State private var showingItemFinder = false
 
-    // Form state for Add/Edit sheet
     @State private var itemName = ""
     @State private var itemQuantity = "" // String for TextField input
     @State private var itemBarcode = ""
@@ -167,21 +211,38 @@ struct InventoryListView: View {
             .sheet(isPresented: $showingAddEditSupply) {
                 NavigationView {
                     Form {
-                        TextField("Name", text: $itemName)
-                        TextField("Price", text: $itemPrice)
-                            .keyboardType(.decimalPad)
-
-                        // Only show Quantity and Date fields when ADDING a new item, not editing.
-                        if editingItem == nil {
-                            TextField("Quantity", text: $itemQuantity)
-                                .keyboardType(.numberPad)
-                            DatePicker("Date Received", selection: $itemReceivedDate, displayedComponents: .date)
+                        Section(header: Text("Item Name")) {
+                            HStack {
+                                TextField("Enter item name", text: $itemName)
+                                Button("Find") {
+                                    showingItemFinder = true
+                                }
+                                .buttonStyle(.bordered)
+                            }
                         }
 
-                        HStack {
-                            TextField("Barcode", text: $itemBarcode)
-                            Button("Scan") {
-                                isShowingScanner = true
+                        Section(header: Text("Price")) {
+                            TextField("Enter price", text: $itemPrice)
+                                .keyboardType(.decimalPad)
+                        }
+
+                        // Only show Quantity and Date fields when ADDING a new item
+                        if editingItem == nil {
+                            Section(header: Text("Quantity Received")) {
+                                TextField("Enter quantity", text: $itemQuantity)
+                                    .keyboardType(.numberPad)
+                            }
+                            Section(header: Text("Date Received")) {
+                                DatePicker("Date", selection: $itemReceivedDate, displayedComponents: .date)
+                            }
+                        }
+
+                        Section(header: Text("Barcode")) {
+                            HStack {
+                                TextField("Enter barcode (optional)", text: $itemBarcode)
+                                Button("Scan") {
+                                    isShowingScanner = true
+                                }
                             }
                         }
                     }
@@ -191,7 +252,13 @@ struct InventoryListView: View {
                             Button("Save") {
                                 saveItem()
                             }
-                            .disabled(itemName.isEmpty || Int(itemQuantity) == nil || Double(itemPrice) == nil)
+                            .disabled(
+                                // If we are adding a new item, check all fields
+                                editingItem == nil ?
+                                (itemName.isEmpty || Int(itemQuantity) == nil || Double(itemPrice) == nil) :
+                                    // If we are just editing, only check the name and price
+                                (itemName.isEmpty || Double(itemPrice) == nil)
+                            )
                         }
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Cancel") {
@@ -204,6 +271,12 @@ struct InventoryListView: View {
                     BasicBarcodeScannerView { code in
                         itemBarcode = code
                         isShowingScanner = false
+                    }
+                }
+                .sheet(isPresented: $showingItemFinder) {
+                    ItemFinderView { selectedName in
+                        // When a name is selected, just fill in the name field.
+                        self.itemName = selectedName
                     }
                 }
             }
@@ -239,40 +312,54 @@ struct InventoryListView: View {
     private func saveItem() {
         let newQty = Int(itemQuantity) ?? 0
         let price = Double(itemPrice) ?? 0.0
+        let trimmedName = itemName.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let item = editingItem {
             // When editing, we only update the item's core details.
-            // Quantity is now handled separately by creating new supplies.
-            item.name = itemName
+            item.name = trimmedName
             item.pricePerUnit = price
             item.barcode = itemBarcode.isEmpty ? nil : itemBarcode
         } else {
-            // The quantity property on the item itself is not set directly.
-            // It is determined by its transactions.
-            let newItem = InventoryItem(name: itemName, pricePerUnit: price, receivedDate: itemReceivedDate)
-            newItem.barcode = itemBarcode.isEmpty ? nil : itemBarcode
+            // This is a new supply. First, check if an item with this name AND price already exists.
+            let fetchRequest = FetchDescriptor<InventoryItem>(predicate: #Predicate {
+                $0.name == trimmedName && $0.pricePerUnit == price
+            })
+            let existingItems = try? modelContext.fetch(fetchRequest)
 
-            let initialSupply = SupplyRecord(date: itemReceivedDate, quantity: newQty)
-            initialSupply.inventoryItem = newItem // Link supply to item
-            modelContext.insert(newItem)     // Insert the new master item
-            modelContext.insert(initialSupply) // Insert its initial supply record
+            if let existingItem = existingItems?.first {
+                // Item already exists. Add a new supply to it.
+                let newSupply = SupplyRecord(date: itemReceivedDate, quantity: newQty)
+                newSupply.inventoryItem = existingItem
+                modelContext.insert(newSupply)
+                print("📦 Added new supply to existing item: \(existingItem.name)")
+            } else {
+                // Item is brand new. Create the item and its initial supply.
+                let newItem = InventoryItem(name: trimmedName, pricePerUnit: price, receivedDate: itemReceivedDate)
+                newItem.barcode = itemBarcode.isEmpty ? nil : itemBarcode
+
+                let initialSupply = SupplyRecord(date: itemReceivedDate, quantity: newQty)
+                initialSupply.inventoryItem = newItem
+                
+                modelContext.insert(newItem)
+                modelContext.insert(initialSupply)
+                print("✨ Created new master item: \(newItem.name)")
+            }
         }
 
         do {
             try modelContext.save()
         } catch {
             print("Failed to save context after item changes/supply: \(error)")
-            // Consider adding a user-facing alert here for save errors
         }
-
+        editingItem = nil
         showingAddEditSupply = false
     }
 
     private func cancel() {
+        editingItem = nil
         showingAddEditSupply = false
-        if editingItem != nil {
-            modelContext.rollback() // Discard unsaved changes for the item if any
-        }
+        // No need to check if editingItem was nil, rollback does nothing if there are no changes.
+        modelContext.rollback()
     }
 
     // This function is called by the .onDelete swipe action
