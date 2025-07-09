@@ -44,10 +44,10 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Reports", systemImage: "doc.plaintext")
                 }
-            DebugView()
-                .tabItem {
-                    Label("Debug", systemImage: "ladybug.fill")
-                }
+//            DebugView()
+//                .tabItem {
+//                    Label("Debug", systemImage: "ladybug.fill")
+//                }
         
         }
         .background(Color("AppBackground"))
