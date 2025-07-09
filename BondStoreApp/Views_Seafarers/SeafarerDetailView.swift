@@ -340,19 +340,8 @@ struct SeafarerDetailView: View {
                             .font(.headline)
                     }
                     .frame(height: 50)
-                    HStack {
-                        Text("Quantity")
-                            .font(.headline)
-                        Spacer()
-                        Picker("Quantity", selection: $editedQuantityString) {
-                            ForEach(1..<101) { qty in
-                                Text("\(qty)").tag("\(qty)")
-                            }
-                        }
-                        .pickerStyle(.wheel)
-                        .frame(width: 100, height: 50)
-                        .clipped()
-                    }
+                    TextField("Quantity", text: $editedQuantityString)
+                        .keyboardType(.numberPad)
                 }
                 .navigationTitle("Edit Distribution")
                 .toolbar {

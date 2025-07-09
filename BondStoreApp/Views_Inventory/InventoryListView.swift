@@ -117,21 +117,21 @@ struct InventoryListView: View {
         return totalSupplied - totalDistributed
     }
     
-    private var monthDate: Date {
+    private var startOfMonthDate: Date {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM"
-        formatter.timeZone = TimeZone.current // Ensures consistency
+        // Use the user's local timezone for UI consistency.
+        return formatter.date(from: monthID) ?? .distantFuture
+    }
 
-        // 1. Get the start date of the selected month
-        guard let startDate = formatter.date(from: self.monthID) else { return Date() }
-
-        // 2. Get the start date of the NEXT month
-        guard let nextMonthDate = Calendar.current.date(byAdding: .month, value: 1, to: startDate) else { return Date() }
-
-        // 3. Get the exact end of the selected month by subtracting one second
-        let endOfMonth = Calendar.current.date(byAdding: .second, value: -1, to: nextMonthDate)
-        
-        return endOfMonth ?? Date()
+    private var endOfMonthDate: Date {
+        // Use the local calendar to correctly find the last day of the month.
+        let startDate = startOfMonthDate
+        guard let nextMonth = Calendar.current.date(byAdding: .month, value: 1, to: startDate),
+              let lastDay = Calendar.current.date(byAdding: .day, value: -1, to: nextMonth) else {
+            return .distantPast
+        }
+        return lastDay
     }
 
     private func formattedMonthName(from date: Date) -> String {
@@ -141,20 +141,21 @@ struct InventoryListView: View {
     }
     
     private var inventoryListContent: some View {
-        let startOfOpeningStock = Calendar.current.date(byAdding: .month, value: -1, to: monthDate) ?? Date()
+        let startOfOpeningStock = Calendar.current.date(byAdding: .month, value: -1, to: endOfMonthDate) ?? Date()
 
-        // Filter items based on the new rule
+        // Inside the inventoryListContent property
         let filteredItems = inventoryItems.filter { item in
             let openingStock = getQuantity(for: item, onOrBefore: startOfOpeningStock)
-            let closingStock = getQuantity(for: item, onOrBefore: monthDate)
+            let closingStock = getQuantity(for: item, onOrBefore: endOfMonthDate)
 
             // Show if opening stock > 0 OR if the quantity changed during the month
             return openingStock > 0 || openingStock != closingStock
         }
 
+        // Inside the ForEach inside inventoryListContent
         return List {
             ForEach(filteredItems) { item in
-                let quantityForMonth = getQuantity(for: item, onOrBefore: monthDate)
+                let quantityForMonth = getQuantity(for: item, onOrBefore: endOfMonthDate)
                 InventoryItemRowView(item: item, quantityForMonth: quantityForMonth)
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -168,7 +169,7 @@ struct InventoryListView: View {
     var body: some View {
             NavigationView {
                 inventoryListContent // Just call the new property here
-                    .navigationTitle("Inventory – \(formattedMonthName(from: monthDate))")
+                .navigationTitle("Inventory – \(formattedMonthName(from: endOfMonthDate))")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
@@ -233,7 +234,7 @@ struct InventoryListView: View {
                                     .keyboardType(.numberPad)
                             }
                             Section(header: Text("Date Received")) {
-                                DatePicker("Date", selection: $itemReceivedDate, displayedComponents: .date)
+                                DatePicker("Date", selection: $itemReceivedDate, in: startOfMonthDate...endOfMonthDate, displayedComponents: .date)
                             }
                         }
 
@@ -281,7 +282,7 @@ struct InventoryListView: View {
                 }
             }
             .sheet(isPresented: $showingInventoryBarcodeScanner) {
-                InventoryBarcodeScannerView()
+                InventoryBarcodeScannerView(startOfMonth: startOfMonthDate, endOfMonth: endOfMonthDate)
             }
         }
     }
@@ -292,7 +293,15 @@ struct InventoryListView: View {
         itemQuantity = ""
         itemBarcode = ""
         itemPrice = ""
-        itemReceivedDate = Date()
+
+        let today = Date()
+        // Use today's date if it's within the valid month, otherwise default to the first day.
+        if today >= startOfMonthDate && today <= endOfMonthDate {
+            itemReceivedDate = today
+        } else {
+            itemReceivedDate = startOfMonthDate
+        }
+
         showingAddEditSupply = true
     }
 

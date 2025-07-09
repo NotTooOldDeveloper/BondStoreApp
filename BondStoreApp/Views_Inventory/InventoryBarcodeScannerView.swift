@@ -37,6 +37,10 @@ struct InventoryBarcodeScannerView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var inventoryItems: [InventoryItem]
 
+    // Date range for the current month
+    let startOfMonth: Date
+    let endOfMonth: Date
+
     @State private var scannedItems: [ScannedInventoryItem] = []
     @State private var currentBarcode: IdentifiableBarcode? = nil
     @State private var tempName: String = ""
@@ -126,7 +130,10 @@ struct InventoryBarcodeScannerView: View {
                     onAdd: {
                         addScannedItem()
                         currentBarcode = nil
-                    }
+                    },
+                    // Pass the date range down
+                    startOfMonth: startOfMonth,
+                    endOfMonth: endOfMonth
                 )
             }
             .onChange(of: currentBarcode) { newValue, _ in
@@ -143,10 +150,17 @@ struct InventoryBarcodeScannerView: View {
             AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
             return
         }
-        // Proceed with opening input form for new code
         tempName = ""
         tempQuantity = 1
-        tempDateReceived = Date()
+
+        let today = Date()
+        // Use today's date if it's within the valid month, otherwise default to the first day.
+        if today >= startOfMonth && today <= endOfMonth {
+            tempDateReceived = today
+        } else {
+            tempDateReceived = startOfMonth
+        }
+
         tempPricePerUnit = 0.0
         currentBarcode = IdentifiableBarcode(code: code)
     }
@@ -213,27 +227,27 @@ struct InventoryItemDetailView: View {
     let barcode: String
     var onAdd: () -> Void
 
+    // Date range for the current month
+    let startOfMonth: Date
+    let endOfMonth: Date
+    
     var body: some View {
         NavigationView {
             Form {
                 Section(header: Text("Name")) {
                     TextField("Enter item name", text: $name)
                 }
+                // Inside the InventoryItemDetailView
                 Section(header: Text("Quantity")) {
-                    Picker("", selection: $quantity) {
-                        ForEach(1..<101) { i in
-                            Text("\(i)").tag(i)
-                        }
-                    }
-                    .pickerStyle(.wheel)
-                    .frame(height: 100)
+                    TextField("Enter quantity", value: $quantity, format: .number)
+                        .keyboardType(.numberPad)
                 }
                 Section(header: Text("Price Per Unit")) {
                     TextField("Enter price", value: $pricePerUnit, format: .number)
                         .keyboardType(.decimalPad)
                 }
                 Section(header: Text("Date Received")) {
-                    DatePicker("Date Received", selection: $dateReceived, displayedComponents: .date)
+                    DatePicker("Date Received", selection: $dateReceived, in: startOfMonth...endOfMonth, displayedComponents: .date)
                 }
                 Section(header: Text("Barcode")) {
                     Text(barcode)
