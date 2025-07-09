@@ -9,10 +9,12 @@ struct SeafarersListView: View {
     var month: MonthlyData // Ensure MonthlyData is an @Model and seafarers is a @Relationship
 
     @State private var showingAddSeafarer = false
+    // The state variables at the top of the View
     @State private var newID = ""
     @State private var newName = ""
     @State private var newRank = ""
     @State private var newIsRepresentative = false
+    @State private var newDate = Date() // New state for the DatePicker
 
     @State private var showingFileImporter = false
     // Using a single state for import feedback and alert presentation
@@ -27,30 +29,66 @@ struct SeafarersListView: View {
     var body: some View {
         NavigationView {
             List {
-                // Ensure `SortDescriptor` is working.
-                // If this line causes an error, try `sorted(by: { $0.displayID < $1.displayID })`
-                ForEach(month.seafarers.sorted(using: SortDescriptor(\.displayID)), id: \.id) { seafarer in
-                    VStack(alignment: .leading) {
-                        NavigationLink(destination: SeafarerDetailView(seafarer: seafarer)) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text("\(seafarer.displayID).")
+                let representatives = month.seafarers.filter { $0.isRepresentative }
+                let regularSeafarers = month.seafarers.filter { !$0.isRepresentative }
+
+                // --- Representatives Section ---
+                if !representatives.isEmpty {
+                    Section(header: Text("Representatives")) {
+                        ForEach(representatives) { seafarer in
+                            NavigationLink(destination: SeafarerDetailView(seafarer: seafarer)) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        // Representative's name on the top line
+                                        Text("\(seafarer.rank) - \(seafarer.displayID)")
                                             .bold()
+                                        // Date and Port Name on the bottom line
                                         Text(seafarer.name)
-                                            .bold()
+                                            .font(.subheadline)
                                     }
-                                    Text(seafarer.rank)
-                                        .font(.subheadline)
+                                    Spacer()
+                                    Text("Spent: €\(seafarer.totalSpent, specifier: "%.2f")")
+                                        .font(.headline)
                                 }
-                                Spacer()
-                                Text("Spent: €\(seafarer.totalSpent, specifier: "%.2f")") // Changed $ to €
-                                    .font(.headline)
                             }
+                        }
+                        .onDelete { indexSet in
+                            // We now explicitly tell the delete function to use the 'representatives' list
+                            let representatives = month.seafarers.filter { $0.isRepresentative }
+                            delete(at: indexSet, from: representatives)
                         }
                     }
                 }
-                .onDelete(perform: deleteSeafarers)
+
+                // --- Seafarers Section ---
+                if !regularSeafarers.isEmpty {
+                    Section(header: Text("Seafarers")) {
+                        ForEach(regularSeafarers.sorted(using: SortDescriptor(\.displayID))) { seafarer in
+                            NavigationLink(destination: SeafarerDetailView(seafarer: seafarer)) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack {
+                                            Text("\(seafarer.displayID).")
+                                                .bold()
+                                            Text(seafarer.name)
+                                                .bold()
+                                        }
+                                        Text(seafarer.rank)
+                                            .font(.subheadline)
+                                    }
+                                    Spacer()
+                                    Text("Spent: €\(seafarer.totalSpent, specifier: "%.2f")")
+                                        .font(.headline)
+                                }
+                            }
+                        }
+                        .onDelete { indexSet in
+                            // And here we tell it to use the 'regularSeafarers' list
+                            let regularSeafarers = month.seafarers.filter { !$0.isRepresentative }.sorted(using: SortDescriptor(\.displayID))
+                            delete(at: indexSet, from: regularSeafarers)
+                        }
+                    }
+                }
             }
             .navigationTitle("Seafarers – \(formattedMonthName(from: monthDate))")
             .toolbar {
@@ -79,18 +117,30 @@ struct SeafarersListView: View {
             .sheet(isPresented: $showingAddSeafarer) {
                 NavigationView {
                     Form {
-                        TextField("ID", text: $newID)
-                        TextField("Name", text: $newName)
-                        TextField("Rank", text: $newRank)
-                        Toggle("Is Representative", isOn: $newIsRepresentative)
+                        // --- Dynamic Fields ---
+                        if newIsRepresentative {
+                            // Fields for a Representative
+                            DatePicker("Date", selection: $newDate, displayedComponents: .date)
+                            TextField("Port Name", text: $newID)
+                            TextField("Representative Name", text: $newName)
+                        } else {
+                            // Fields for a regular Seafarer
+                            TextField("ID", text: $newID)
+                            TextField("Name", text: $newName)
+                            TextField("Rank", text: $newRank)
+                        }
+
+                        // --- Toggle ---
+                        Toggle("Is Representative", isOn: $newIsRepresentative.animation())
                     }
-                    .navigationTitle("New Seafarer")
+                    .navigationTitle(newIsRepresentative ? "New Representative" : "New Seafarer")
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Add") {
-                                addNewSeafarer() // Renamed for clarity
+                                addNewSeafarer()
                             }
-                            .disabled(newID.isEmpty || newName.isEmpty || newRank.isEmpty)
+                            // Disable button if required fields are empty
+                            .disabled(newID.isEmpty || newName.isEmpty || (!newIsRepresentative && newRank.isEmpty))
                         }
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Cancel") {
@@ -114,31 +164,39 @@ struct SeafarersListView: View {
     private func addNewSeafarer() {
         let trimmedID = newID.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // 1. Check for duplicates BEFORE adding the new seafarer to the month.
-        if month.seafarers.contains(where: { $0.displayID == trimmedID }) {
+        if month.seafarers.contains(where: { $0.displayID == trimmedID && !$0.isRepresentative }) {
             importFeedbackMessage = "A seafarer with ID '\(trimmedID)' already exists. Please use a unique ID."
             showingImportAlert = true
             return
         }
-        
-        // 2. If no duplicate is found, create and link the new seafarer.
+
+        // Determine rank based on whether it's a representative or not
+        let finalRank: String
+        // Inside the addNewSeafarer() function
+        if newIsRepresentative {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "dd.MM.yy" // Sets the format to day.month.year
+            finalRank = formatter.string(from: newDate)
+        } else {
+            finalRank = newRank.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
         let seafarer = Seafarer(
             displayID: trimmedID,
             name: newName.trimmingCharacters(in: .whitespacesAndNewlines),
-            rank: newRank.trimmingCharacters(in: .whitespacesAndNewlines),
+            rank: finalRank, // Use the determined rank
             isRepresentative: newIsRepresentative
         )
-        seafarer.monthlyData = month // Set the relationship
+        seafarer.monthlyData = month
 
-        // 3. Insert and Save.
         modelContext.insert(seafarer)
-        
+
         do {
             try modelContext.save()
-            print("🟢 Successfully added new seafarer and saved context.")
+            print("🟢 Successfully added new entry and saved context.")
         } catch {
-            print("🔴 Failed to save context after adding seafarer: \(error.localizedDescription)")
-            importFeedbackMessage = "Failed to save new seafarer: \(error.localizedDescription)"
+            print("🔴 Failed to save context: \(error.localizedDescription)")
+            importFeedbackMessage = "Failed to save new entry: \(error.localizedDescription)"
             showingImportAlert = true
         }
 
@@ -146,19 +204,19 @@ struct SeafarersListView: View {
         resetNewSeafarerFields()
     }
 
-    private func deleteSeafarers(at offsets: IndexSet) {
-        let sortedSeafarers = month.seafarers.sorted(using: SortDescriptor(\.displayID))
+    private func delete(at offsets: IndexSet, from collection: [Seafarer]) {
+        // This function now correctly identifies the item from the specific collection it was given.
         for index in offsets {
-            let seafarerToDelete = sortedSeafarers[index]
-            month.seafarers.removeAll { $0.id == seafarerToDelete.id }
-            modelContext.delete(seafarerToDelete)
+            let itemToDelete = collection[index]
+            modelContext.delete(itemToDelete)
         }
-        
+
+        // It's good practice to save once after all deletions are staged.
         do {
-            try modelContext.save() // Explicitly save after deletion
-            print("🟢 Successfully deleted seafarers and saved context.")
+            try modelContext.save()
+            print("🟢 Successfully deleted item(s) and saved context.")
         } catch {
-            print("🔴 Failed to save context after deleting seafarers: \(error.localizedDescription)")
+            print("🔴 Failed to save context after deletion: \(error.localizedDescription)")
         }
     }
     

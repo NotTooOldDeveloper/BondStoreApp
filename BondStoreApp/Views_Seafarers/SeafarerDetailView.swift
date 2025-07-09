@@ -65,6 +65,10 @@ struct SeafarerDetailView: View {
         seafarer.totalSpent = seafarer.distributions.reduce(0) { partialSum, dist in
             partialSum + Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
         }
+        // Clamp near-zero values to 0 to prevent showing "-0.00"
+        if abs(seafarer.totalSpent) < 0.001 {
+            seafarer.totalSpent = 0
+        }
     }
     
     private func getQuantity(for item: InventoryItem, onOrBefore date: Date) -> Int {
@@ -159,9 +163,15 @@ struct SeafarerDetailView: View {
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                         .swipeActions(edge: .trailing) {
+                            // Inside the .swipeActions modifier
                             Button(role: .destructive) {
 
                                 seafarer.totalSpent -= Double(dist.quantity) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
+                                // Clamp near-zero values to 0
+                                if abs(seafarer.totalSpent) < 0.001 {
+                                    seafarer.totalSpent = 0
+                                }
+
                                 if let index = seafarer.distributions.firstIndex(of: dist) {
                                     seafarer.distributions.remove(at: index)
                                     modelContext.delete(dist)
@@ -243,12 +253,19 @@ struct SeafarerDetailView: View {
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Add") {
+                            // Inside the "Add" button for a new distribution
                             guard
                                 let selectedItem = selectedItem,
                                 let qty = Int(quantityString),
-                                qty > 0,
-                                getQuantity(for: selectedItem, onOrBefore: selectedDate) >= qty // Check quantity on the selected date
+                                qty > 0
                             else {
+                                // Return early if input is invalid
+                                return
+                            }
+
+                            // For the check, use the very end of the selected day to include all same-day supplies.
+                            let endOfSelectedDay = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: selectedDate))?.addingTimeInterval(-1) ?? selectedDate
+                            guard getQuantity(for: selectedItem, onOrBefore: endOfSelectedDay) >= qty else {
                                 showInventoryAlert = true // Show an alert if not enough stock
                                 return
                             }
@@ -352,14 +369,20 @@ struct SeafarerDetailView: View {
                             }
                             let quantityDifference = newQuantity - dist.quantity
                             if let inventoryItem = dist.inventoryItem {
-                                // Check against the current calculated quantity
-                                if getQuantity(for: inventoryItem, onOrBefore: Date()) < quantityDifference {
+
+                                let endOfEditedDay = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: editedDate))?.addingTimeInterval(-1) ?? editedDate
+                                if getQuantity(for: inventoryItem, onOrBefore: endOfEditedDay) < quantityDifference {
                                     showInventoryAlert = true
                                     return
                                 }
-                                // DO NOT manually change the quantity. The transaction records do this automatically.
+
                             }
+                            // Inside the .sheet(item: $distributionToEdit) modifier, in the "Save" button
                             seafarer.totalSpent += Double(quantityDifference) * priceWithTax(for: seafarer, basePrice: dist.unitPrice)
+                            // Clamp near-zero values to 0
+                            if abs(seafarer.totalSpent) < 0.001 {
+                                seafarer.totalSpent = 0
+                            }
                             dist.quantity = newQuantity
                             dist.date = editedDate
                             // --- BEGIN ADDED SAVE FOR EDITING DISTRIBUTION ---

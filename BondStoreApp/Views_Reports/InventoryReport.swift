@@ -439,7 +439,7 @@ struct ReportDetailRow: View {
                 ForEach(item.monthlySupplies) { supply in
                     GridRow(alignment: .firstTextBaseline) {
                         EmptyView() // Blank cell to indent
-                        Text("- \(supply.date, style: .date):")
+                        Text("\(supply.date, style: .date):")
                         Text("\(supply.quantity) units")
                             .gridColumnAlignment(.trailing)
                         Text("+\(Double(supply.quantity) * item.pricePerItem, format: .currency(code: "EUR"))")
@@ -449,22 +449,17 @@ struct ReportDetailRow: View {
                 }
             }
 
-            // --- Distributions Rows ---
-            if !item.monthlyDistributions.isEmpty {
+            // --- Distributions Total Row ---
+            if item.distributedStock > 0 { // Only show the row if items were distributed
                 Divider().gridCellUnsizedAxes(.horizontal)
                 GridRow(alignment: .firstTextBaseline) {
                     Text("Distributions:").font(.headline)
-                }
-                ForEach(item.monthlyDistributions) { dist in
-                    GridRow(alignment: .firstTextBaseline) {
-                        EmptyView() // Blank cell to indent
-                        Text("- \(dist.date, style: .date):")
-                        Text("\(dist.quantity) units")
-                            .gridColumnAlignment(.trailing)
-                        Text("-\(Double(dist.quantity) * item.pricePerItem, format: .currency(code: "EUR"))")
-                            .foregroundColor(.red)
-                            .gridColumnAlignment(.trailing)
-                    }
+                    EmptyView() // Spacer for the date column
+                    Text("\(item.distributedStock) units")
+                        .gridColumnAlignment(.trailing)
+                    Text("-\(item.distributedValue, format: .currency(code: "EUR"))")
+                        .foregroundColor(.red)
+                        .gridColumnAlignment(.trailing)
                 }
             }
 

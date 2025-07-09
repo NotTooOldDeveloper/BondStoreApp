@@ -32,9 +32,9 @@ struct MonthSelectorView: View {
                 // Prepare new MonthlyData
                 let newMonthData = MonthlyData(monthID: month)
 
-                if let prev = previousMonthData {
-                    // Copy seafarers with reset totals
-                    for oldSeafarer in prev.seafarers {
+                   if let prev = previousMonthData {
+                    // Copy seafarers with reset totals, filtering out representatives.
+                    for oldSeafarer in prev.seafarers.filter({ !$0.isRepresentative }) {
                         let newSeafarer = oldSeafarer.deepCopy()
                         newSeafarer.monthlyData = newMonthData // Set the inverse relationship
                         newMonthData.seafarers.append(newSeafarer)
