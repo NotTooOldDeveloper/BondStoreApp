@@ -116,7 +116,7 @@ struct BarcodeScannerView: View {
 
     private func handleScan(code: String) {
         // Lookup inventory item by barcode (assuming barcode stored in `barcode` property)
-        guard let foundItem = inventoryItems.first(where: { $0.barcode == code }) else {
+        guard let foundItem = inventoryItems.first(where: { $0.barcodes.contains(code) }) else {
             // Optionally show alert "Item not found"
             return
         }

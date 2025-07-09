@@ -21,10 +21,11 @@ import SwiftData
 struct ScannedInventoryItem: Identifiable, Equatable {
     let id = UUID()
     var name: String
-    let barcode: String
+    let barcode: String // The main scanned barcode
     var quantity: Int
     var dateReceived: Date
     var pricePerUnit: Double
+    var additionalBarcodes: [String] = Array(repeating: "", count: 4) // For the 4 extra fields
 }
 
 struct IdentifiableBarcode: Identifiable, Equatable {
@@ -42,11 +43,8 @@ struct InventoryBarcodeScannerView: View {
     let endOfMonth: Date
 
     @State private var scannedItems: [ScannedInventoryItem] = []
-    @State private var currentBarcode: IdentifiableBarcode? = nil
-    @State private var tempName: String = ""
-    @State private var tempQuantity: Int = 1
-    @State private var tempDateReceived: Date = Date()
-    @State private var tempPricePerUnit: Double = 0.0
+    @State private var itemBeingEdited: ScannedInventoryItem?
+    @State private var sheetIsPresented = false
     @State private var showDuplicateAlert = false
     @State private var duplicateBarcode: String?
     @State private var scannerController: InventoryScannerViewController?
@@ -120,69 +118,60 @@ struct InventoryBarcodeScannerView: View {
                     scannerController?.restartCaptureSession()
                 }
             }
-            .sheet(item: $currentBarcode) { wrapped in
-                InventoryItemDetailView(
-                    name: $tempName,
-                    quantity: $tempQuantity,
-                    dateReceived: $tempDateReceived,
-                    pricePerUnit: $tempPricePerUnit,
-                    barcode: wrapped.code,
-                    onAdd: {
-                        addScannedItem()
-                        currentBarcode = nil
-                    },
-                    // Pass the date range down
-                    startOfMonth: startOfMonth,
-                    endOfMonth: endOfMonth
-                )
+            .sheet(isPresented: $sheetIsPresented) {
+                // This is the correct way to get a binding from an optional state for a sheet
+                if let binding = Binding($itemBeingEdited) {
+                    InventoryItemDetailView(
+                        item: binding,
+                        onAdd: {
+                            addScannedItem()
+                            sheetIsPresented = false
+                        },
+                        onCancel: {
+                            sheetIsPresented = false
+                        },
+                        startOfMonth: startOfMonth,
+                        endOfMonth: endOfMonth
+                    )
+                }
             }
-            .onChange(of: currentBarcode) { newValue, _ in
-                if newValue == nil {
+            .onChange(of: sheetIsPresented) {
+                // If the sheet was just dismissed, restart the camera session.
+                if !sheetIsPresented {
                     scannerController?.restartCaptureSession()
                 }
             }
         }
     }
     private func handleScan(code: String) {
-        if inventoryItems.contains(where: { $0.barcode == code }) {
+        if inventoryItems.contains(where: { $0.barcodes.contains(code) }) {
             duplicateBarcode = code
             showDuplicateAlert = true
             AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
             return
         }
-        tempName = ""
-        tempQuantity = 1
 
         let today = Date()
-        // Use today's date if it's within the valid month, otherwise default to the first day.
-        if today >= startOfMonth && today <= endOfMonth {
-            tempDateReceived = today
-        } else {
-            tempDateReceived = startOfMonth
-        }
+        let defaultDate = (today >= startOfMonth && today <= endOfMonth) ? today : startOfMonth
 
-        tempPricePerUnit = 0.0
-        currentBarcode = IdentifiableBarcode(code: code)
+        itemBeingEdited = ScannedInventoryItem(
+            name: "",
+            barcode: code,
+            quantity: 1,
+            dateReceived: defaultDate,
+            pricePerUnit: 0.0
+        )
+
+        sheetIsPresented = true
     }
-    
 
     private func addScannedItem() {
-        guard let barcode = currentBarcode else { return }
+        guard let itemToAdd = itemBeingEdited else { return }
 
-        if let index = scannedItems.firstIndex(where: { $0.barcode == barcode.code }) {
-            scannedItems[index].name = tempName
-            scannedItems[index].quantity = tempQuantity
-            scannedItems[index].dateReceived = tempDateReceived
-            scannedItems[index].pricePerUnit = tempPricePerUnit
+        if let index = scannedItems.firstIndex(where: { $0.barcode == itemToAdd.barcode }) {
+            scannedItems[index] = itemToAdd
         } else {
-            let newItem = ScannedInventoryItem(
-                name: tempName,
-                barcode: barcode.code,
-                quantity: tempQuantity,
-                dateReceived: tempDateReceived,
-                pricePerUnit: tempPricePerUnit
-            )
-            scannedItems.append(newItem)
+            scannedItems.append(itemToAdd)
         }
     }
 
@@ -191,12 +180,14 @@ struct InventoryBarcodeScannerView: View {
     }
 
     private func finalizeAdding() {
+        // The loop inside the finalizeAdding() function
         for item in scannedItems {
-            // Create the master item WITHOUT a quantity
+            let allBarcodes = [item.barcode] + item.additionalBarcodes.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+
             let newInventoryItem = InventoryItem(
                 name: item.name,
                 pricePerUnit: item.pricePerUnit,
-                barcode: item.barcode,
+                barcodes: allBarcodes,
                 receivedDate: item.dateReceived
             )
             
@@ -218,59 +209,71 @@ struct InventoryBarcodeScannerView: View {
     }
 }
 
-struct InventoryItemDetailView: View {
-    @Environment(\.dismiss) var dismiss
-    @Binding var name: String
-    @Binding var quantity: Int
-    @Binding var dateReceived: Date
-    @Binding var pricePerUnit: Double
-    let barcode: String
-    var onAdd: () -> Void
 
-    // Date range for the current month
+struct InventoryItemDetailView: View {
+    struct ScanIndex: Identifiable {
+        var id: Int { index }
+        let index: Int
+    }
+
+        @Binding var item: ScannedInventoryItem
+    var onAdd: () -> Void
+    var onCancel: () -> Void
+
     let startOfMonth: Date
     let endOfMonth: Date
-    
+
+    @State private var scanningTarget: ScanIndex?
+
     var body: some View {
         NavigationView {
             Form {
                 Section(header: Text("Name")) {
-                    TextField("Enter item name", text: $name)
+                    TextField("Enter item name", text: $item.name)
                 }
-                // Inside the InventoryItemDetailView
                 Section(header: Text("Quantity")) {
-                    TextField("Enter quantity", value: $quantity, format: .number)
+                    TextField("Enter quantity", value: $item.quantity, format: .number)
                         .keyboardType(.numberPad)
                 }
                 Section(header: Text("Price Per Unit")) {
-                    TextField("Enter price", value: $pricePerUnit, format: .number)
+                    TextField("Enter price", value: $item.pricePerUnit, format: .number)
                         .keyboardType(.decimalPad)
                 }
                 Section(header: Text("Date Received")) {
-                    DatePicker("Date Received", selection: $dateReceived, in: startOfMonth...endOfMonth, displayedComponents: .date)
+                    DatePicker("Date Received", selection: $item.dateReceived, in: startOfMonth...endOfMonth, displayedComponents: .date)
                 }
-                Section(header: Text("Barcode")) {
-                    Text(barcode)
+                Section(header: Text("Scanned Barcode")) {
+                    Text(item.barcode)
                         .foregroundColor(.secondary)
+                }
+                Section(header: Text("Additional Barcodes (Optional)")) {
+                    ForEach(0..<4, id: \.self) { index in
+                        HStack {
+                            TextField("Barcode \(index + 2)", text: $item.additionalBarcodes[index])
+                            Button("Scan") {
+                                self.scanningTarget = ScanIndex(index: index)
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle("Add Item Details")
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        onAdd()
+                ToolbarItem(placement: .confirmationAction) { Button("Add") { onAdd() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { onCancel() } }
+            }
+            .sheet(item: $scanningTarget) { target in
+                BasicBarcodeScannerView { code in
+                    let index = target.index
+                    if index < item.additionalBarcodes.count {
+                        item.additionalBarcodes[index] = code
                     }
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    scanningTarget = nil // Dismiss scanner
                 }
             }
         }
     }
 }
-
 
 // UIViewRepresentable for camera preview and barcode scanning
 

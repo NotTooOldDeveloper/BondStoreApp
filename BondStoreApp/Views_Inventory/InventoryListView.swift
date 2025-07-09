@@ -100,11 +100,11 @@ struct InventoryListView: View {
 
     @State private var itemName = ""
     @State private var itemQuantity = "" // String for TextField input
-    @State private var itemBarcode = ""
+    @State private var itemBarcodes: [String] = Array(repeating: "", count: 5)
     @State private var itemPrice: Double = 0.0    // String for TextField input
     @State private var itemReceivedDate = Date() // This will be the date of the supply
 
-    @State private var isShowingScanner = false // For the barcode scan within Add/Edit sheet
+    @State private var scanningTarget: Int? = nil // Index of barcode field currently scanning
     @State private var showingInventoryBarcodeScanner = false // For the dedicated Inventory barcode scanner
 
     // New state for deletion warnings
@@ -154,19 +154,19 @@ struct InventoryListView: View {
         return formatter.string(from: date)
     }
     
-    private var inventoryListContent: some View {
+    private var filteredItems: [InventoryItem] {
         let startOfOpeningStock = Calendar.current.date(byAdding: .month, value: -1, to: endOfMonthDate) ?? Date()
 
-        // Inside the inventoryListContent property
-        let filteredItems = inventoryItems.filter { item in
+        return inventoryItems.filter { item in
             let openingStock = getQuantity(for: item, onOrBefore: startOfOpeningStock)
             let closingStock = getQuantity(for: item, onOrBefore: endOfMonthDate)
 
             // Show if opening stock > 0 OR if the quantity changed during the month
             return openingStock > 0 || openingStock != closingStock
         }
+    }
 
-        // Inside the ForEach inside inventoryListContent
+    private var inventoryListContent: some View {
         return List {
             ForEach(filteredItems) { item in
                 let quantityForMonth = getQuantity(for: item, onOrBefore: endOfMonthDate)
@@ -257,11 +257,13 @@ struct InventoryListView: View {
                             }
                         }
 
-                        Section(header: Text("Barcode")) {
-                            HStack {
-                                TextField("Enter barcode (optional)", text: $itemBarcode)
-                                Button("Scan") {
-                                    isShowingScanner = true
+                        Section(header: Text("Barcodes (up to 5)")) {
+                            ForEach(0..<5, id: \.self) { index in
+                                HStack {
+                                    TextField("Barcode \(index + 1)", text: $itemBarcodes[index])
+                                    Button("Scan") {
+                                        scanningTarget = index
+                                    }
                                 }
                             }
                         }
@@ -292,11 +294,20 @@ struct InventoryListView: View {
                         }
                     }
                 }
-                .sheet(isPresented: $isShowingScanner) {
-                    // This nested sheet remains the same
+                .sheet(item: Binding(
+                    get: {
+                        scanningTarget.map { ScanIndex(index: $0) }
+                    },
+                    set: { newValue in
+                        scanningTarget = newValue?.index
+                    }
+                )) { target in
                     BasicBarcodeScannerView { code in
-                        itemBarcode = code
-                        isShowingScanner = false
+                        let index = target.index
+                        if index < itemBarcodes.count {
+                            itemBarcodes[index] = code
+                        }
+                        scanningTarget = nil
                     }
                 }
                 .sheet(isPresented: $showingItemFinder) {
@@ -316,7 +327,7 @@ struct InventoryListView: View {
         // Reset fields and set the mode to .add
         itemName = ""
         itemQuantity = ""
-        itemBarcode = ""
+        itemBarcodes = Array(repeating: "", count: 5)
         itemPrice = 0.0
 
         let today = Date()
@@ -330,28 +341,52 @@ struct InventoryListView: View {
     }
 
     private func startEditing(_ item: InventoryItem) {
-        // Set fields from the item and set the mode to .edit
-        itemName = item.name
-        itemBarcode = item.barcode ?? ""
-        itemPrice = item.pricePerUnit
-        itemQuantity = "" // Not used in edit mode
-        itemReceivedDate = Date() // Not used in edit mode
-
+        // Set the mode to edit the tapped item
         sheetMode = .edit(item)
+
+        // Populate the form's state variables with the item's data
+        itemName = item.name
+        itemPrice = item.pricePerUnit
+
+        // Load the saved barcodes, padding with empty strings to fill all 5 fields
+        let existingBarcodes = item.barcodes
+        itemBarcodes = (existingBarcodes + Array(repeating: "", count: 5)).prefix(5).map { $0 }
+
+        // Load the initial supply quantity for editing
+        if let firstSupply = item.supplies.min(by: { $0.date < $1.date }) {
+            itemQuantity = "\(firstSupply.quantity)"
+        } else {
+            itemQuantity = ""
+        }
     }
 
     private func saveItem(editingItem: InventoryItem?) {
         let newQty = Int(itemQuantity) ?? 0
-        let price = itemPrice
+        let price = itemPrice // Use the Double directly
         let trimmedName = itemName.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // Create the clean barcodes array at the top level, so it's always in scope.
+        let finalBarcodes = itemBarcodes.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+
         if let item = editingItem {
-            // When editing, we only update the item's core details.
+            // --- EDITING AN EXISTING ITEM ---
             item.name = trimmedName
             item.pricePerUnit = price
-            item.barcode = itemBarcode.isEmpty ? nil : itemBarcode
+            item.barcodes = finalBarcodes // Assign the clean barcodes
+
+            // Additionally, update the initial supply quantity if it was editable.
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM"
+            let itemCreationMonth = formatter.string(from: item.receivedDate)
+
+            if itemCreationMonth == self.monthID {
+                if let newQty = Int(itemQuantity),
+                   let firstSupply = item.supplies.min(by: { $0.date < $1.date }) {
+                    firstSupply.quantity = newQty
+                }
+            }
         } else {
-            // This is a new supply. First, check if an item with this name AND price already exists.
+            // --- CREATING A NEW ITEM OR ADDING A SUPPLY ---
             let fetchRequest = FetchDescriptor<InventoryItem>(predicate: #Predicate {
                 $0.name == trimmedName && $0.pricePerUnit == price
             })
@@ -359,18 +394,22 @@ struct InventoryListView: View {
 
             if let existingItem = existingItems?.first {
                 // Item already exists. Add a new supply to it.
+                // Inside the saveItem function, when adding a supply to an existing item
                 let newSupply = SupplyRecord(date: itemReceivedDate, quantity: newQty)
                 newSupply.inventoryItem = existingItem
                 modelContext.insert(newSupply)
                 print("📦 Added new supply to existing item: \(existingItem.name)")
             } else {
                 // Item is brand new. Create the item and its initial supply.
-                let newItem = InventoryItem(name: trimmedName, pricePerUnit: price, receivedDate: itemReceivedDate)
-                newItem.barcode = itemBarcode.isEmpty ? nil : itemBarcode
-
+                let newItem = InventoryItem(
+                    name: trimmedName,
+                    pricePerUnit: price,
+                    barcodes: finalBarcodes, // Assign the clean barcodes
+                    receivedDate: itemReceivedDate
+                )
                 let initialSupply = SupplyRecord(date: itemReceivedDate, quantity: newQty)
                 initialSupply.inventoryItem = newItem
-                
+
                 modelContext.insert(newItem)
                 modelContext.insert(initialSupply)
                 print("✨ Created new master item: \(newItem.name)")
@@ -398,8 +437,9 @@ struct InventoryListView: View {
         var itemsCannotBeDeleted = false
         var itemsToConfirm: [InventoryItem] = []
 
+        // Inside the confirmDeleteItems(at:) function
         for index in offsets {
-            let item = inventoryItems[index]
+            let item = self.filteredItems[index] // Use the correct filteredItems array
             // IMPORTANT: Ensure your InventoryItem model has @Relationship var distributions: [Distribution] = []
             // AND @Relationship var supplies: [SupplyRecord] = [] for these checks to work.
             if !item.distributions.isEmpty {
@@ -440,108 +480,7 @@ struct InventoryListView: View {
     }
 }
 
-// MARK: - BarcodeScannerView (remains unchanged)
-// This code is provided by you and seems to work for scanning.
-// Its integration point is in the sheet and action in the `InventoryListView`.
-struct BasicBarcodeScannerView: UIViewControllerRepresentable {
-    var completion: (String) -> Void
-
-    func makeUIViewController(context: Context) -> ScannerViewController {
-        let controller = ScannerViewController()
-        controller.completion = completion
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: ScannerViewController, context: Context) {}
-
-    class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
-        var captureSession: AVCaptureSession!
-        var previewLayer: AVCaptureVideoPreviewLayer!
-        var completion: ((String) -> Void)?
-
-        override func viewDidLoad() {
-            super.viewDidLoad()
-            view.backgroundColor = UIColor.black
-            captureSession = AVCaptureSession()
-
-            guard let videoCaptureDevice = AVCaptureDevice.default(for: .video) else {
-                failed()
-                return
-            }
-            guard let videoInput = try? AVCaptureDeviceInput(device: videoCaptureDevice) else {
-                failed()
-                return
-            }
-
-            if (captureSession.canAddInput(videoInput)) {
-                captureSession.addInput(videoInput)
-            } else {
-                failed()
-                return
-            }
-
-            let metadataOutput = AVCaptureMetadataOutput()
-
-            if (captureSession.canAddOutput(metadataOutput)) {
-                captureSession.addOutput(metadataOutput)
-                metadataOutput.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
-                metadataOutput.metadataObjectTypes = [.ean8, .ean13, .pdf417, .code39, .code128, .qr]
-            } else {
-                failed()
-                return
-            }
-
-            previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-            previewLayer.frame = view.layer.bounds
-            previewLayer.videoGravity = .resizeAspectFill
-            view.layer.addSublayer(previewLayer)
-
-            DispatchQueue.global(qos: .userInitiated).async {
-                self.captureSession.startRunning()
-            }
-        }
-
-        func failed() {
-            let ac = UIAlertController(title: "Scanning not supported", message: "Your device does not support barcode scanning.", preferredStyle: .alert)
-            ac.addAction(UIAlertAction(title: "OK", style: .default) { _ in
-                self.dismiss(animated: true)
-            })
-            present(ac, animated: true)
-            captureSession = nil
-        }
-
-        override func viewWillAppear(_ animated: Bool) {
-            super.viewWillAppear(animated)
-            if (captureSession?.isRunning == false) {
-                captureSession.startRunning()
-            }
-        }
-
-        override func viewWillDisappear(_ animated: Bool) {
-            super.viewWillDisappear(animated)
-            if (captureSession?.isRunning == true) {
-                captureSession.stopRunning()
-            }
-        }
-
-        func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
-            captureSession.stopRunning()
-
-            if let metadataObject = metadataObjects.first {
-                guard let readableObject = metadataObject as? AVMetadataMachineReadableCodeObject,
-                        let stringValue = readableObject.stringValue else { return }
-                AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-                completion?(stringValue)
-                // Removed dismiss(animated: true) so SwiftUI sheet state handles dismissal.
-            }
-        }
-
-        override var prefersStatusBarHidden: Bool {
-            true
-        }
-
-        override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-            .portrait
-        }
-    }
+struct ScanIndex: Identifiable {
+    var id: Int { index }
+    let index: Int
 }

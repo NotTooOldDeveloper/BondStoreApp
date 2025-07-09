@@ -13,7 +13,7 @@ class InventoryItem {
     var id: UUID
     var name: String
     var pricePerUnit: Double
-    var barcode: String?
+    var barcodes: [String] = [] // Changed to an array of strings
     var receivedDate: Date
     var originalItemID: UUID? // This should be initialized for new items
 
@@ -26,13 +26,13 @@ class InventoryItem {
 
     // var monthlyData: MonthlyData? - not required in new model
 
-    init(name: String, pricePerUnit: Double, barcode: String? = nil, receivedDate: Date = Date()) {
+    init(name: String, pricePerUnit: Double, barcodes: [String] = [], receivedDate: Date = Date()) {
         self.id = UUID()
         self.name = name
         self.pricePerUnit = pricePerUnit
-        self.barcode = barcode
+        self.barcodes = barcodes
         self.receivedDate = receivedDate
-        self.originalItemID = self.id // Initialize originalItemID for new items here
+        self.originalItemID = self.id // This line was missing
     }
 }
 
