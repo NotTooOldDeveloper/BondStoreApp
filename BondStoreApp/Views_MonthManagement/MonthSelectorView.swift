@@ -202,28 +202,52 @@ struct MonthSelectorView: View {
     }
 
     func deleteMonths(at offsets: IndexSet) {
-        // 1. Collect all the month IDs to be deleted
         let monthsToDelete = offsets.map { availableMonths[$0] }
 
-        // 2. Perform the deletion from the database
         for monthID in monthsToDelete {
-            let fetchRequest = FetchDescriptor<MonthlyData>(predicate: #Predicate { $0.monthID == monthID })
-            if let monthData = try? modelContext.fetch(fetchRequest).first {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM"
+
+            // Ensure we have a valid date range before proceeding
+            guard let startDate = formatter.date(from: monthID),
+                  let endDate = Calendar.current.date(byAdding: .month, value: 1, to: startDate) else {
+                print("Error: Could not determine date range for \(monthID).")
+                continue // Skip to the next month
+            }
+
+            // 1. Delete all Supply Records within the month
+            let supplyPredicate = #Predicate<SupplyRecord> {
+                $0.date >= startDate && $0.date < endDate
+            }
+            if let suppliesToDelete = try? modelContext.fetch(FetchDescriptor(predicate: supplyPredicate)) {
+                suppliesToDelete.forEach { modelContext.delete($0) }
+            }
+
+            // 2. Delete master Inventory Items CREATED within the month
+            let itemPredicate = #Predicate<InventoryItem> {
+                $0.receivedDate >= startDate && $0.receivedDate < endDate
+            }
+            if let itemsToDelete = try? modelContext.fetch(FetchDescriptor(predicate: itemPredicate)) {
+                itemsToDelete.forEach { modelContext.delete($0) }
+            }
+
+            // 3. Delete the MonthlyData object
+            // This cascades to Seafarers and their Distributions
+            let monthPredicate = #Predicate<MonthlyData> { $0.monthID == monthID }
+            if let monthData = try? modelContext.fetch(FetchDescriptor(predicate: monthPredicate)).first {
                 modelContext.delete(monthData)
             }
         }
 
-        // 3. Save the changes once after all deletions
+        // Save changes, reload the UI, and reset selection
         do {
             try modelContext.save()
         } catch {
-            print("Failed to save context after deleting months: \(error)")
+            print("Failed to save context after comprehensive delete: \(error)")
         }
 
-        // 4. Safely update the UI by reloading the list from the database
         loadAvailableMonths()
-        
-        // 5. Sensibly reset the selection
+
         if !availableMonths.contains(selectedMonth ?? "") {
             selectedMonth = availableMonths.last
             appState.selectedMonthID = availableMonths.last

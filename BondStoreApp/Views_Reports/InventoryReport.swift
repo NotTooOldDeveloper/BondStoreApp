@@ -468,10 +468,11 @@ struct ReportDetailRow: View {
             GridRow(alignment: .firstTextBaseline) {
                 Text("Closing:").font(.headline)
                 EmptyView() // Spacer for the date column
-                Text("\(item.closingStock) units").bold()
+                Text("\(item.closingStock) units")
                     .gridColumnAlignment(.trailing)
-                Text(item.totalValue, format: .currency(code: "EUR")).bold()
+                Text(item.totalValue, format: .currency(code: "EUR"))
                     .gridColumnAlignment(.trailing)
+                    .foregroundColor(.blue)
             }
         }
         .font(.subheadline)

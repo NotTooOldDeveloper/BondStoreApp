@@ -106,7 +106,8 @@ struct SeafarerDetailView: View {
                 .fill(Color.blue.opacity(0.3))
                 .overlay(
                     HStack {
-                        Text("Total spent in \(formattedMonthName(from: Date()))")
+                       
+                        Text("Total spent in \(formattedMonthName(from: startOfMonthDate))")
                             .font(.title3.bold())
                             .foregroundColor(Color("Name1"))
                         Spacer()
