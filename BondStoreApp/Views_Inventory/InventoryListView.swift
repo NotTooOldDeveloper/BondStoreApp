@@ -101,7 +101,7 @@ struct InventoryListView: View {
     @State private var itemName = ""
     @State private var itemQuantity = "" // String for TextField input
     @State private var itemBarcode = ""
-    @State private var itemPrice = ""    // String for TextField input
+    @State private var itemPrice: Double = 0.0    // String for TextField input
     @State private var itemReceivedDate = Date() // This will be the date of the supply
 
     @State private var isShowingScanner = false // For the barcode scan within Add/Edit sheet
@@ -242,7 +242,7 @@ struct InventoryListView: View {
                         }
 
                         Section(header: Text("Price")) {
-                            TextField("Enter price", text: $itemPrice)
+                            TextField("Enter price", value: $itemPrice, format: .number)
                                 .keyboardType(.decimalPad)
                         }
 
@@ -280,9 +280,9 @@ struct InventoryListView: View {
                             .disabled(
                                 // If we are adding a new item, check all fields
                                 !isEditing ?
-                                (itemName.isEmpty || Int(itemQuantity) == nil || Double(itemPrice) == nil) :
+                                (itemName.isEmpty || Int(itemQuantity) == nil || itemPrice <= 0) :
                                 // If we are just editing, only check the name and price
-                                (itemName.isEmpty || Double(itemPrice) == nil)
+                                (itemName.isEmpty || itemPrice <= 0)
                             )
                         }
                         ToolbarItem(placement: .cancellationAction) {
@@ -317,7 +317,7 @@ struct InventoryListView: View {
         itemName = ""
         itemQuantity = ""
         itemBarcode = ""
-        itemPrice = ""
+        itemPrice = 0.0
 
         let today = Date()
         if today >= startOfMonthDate && today <= endOfMonthDate {
@@ -333,7 +333,7 @@ struct InventoryListView: View {
         // Set fields from the item and set the mode to .edit
         itemName = item.name
         itemBarcode = item.barcode ?? ""
-        itemPrice = String(format: "%.2f", item.pricePerUnit)
+        itemPrice = item.pricePerUnit
         itemQuantity = "" // Not used in edit mode
         itemReceivedDate = Date() // Not used in edit mode
 
@@ -342,7 +342,7 @@ struct InventoryListView: View {
 
     private func saveItem(editingItem: InventoryItem?) {
         let newQty = Int(itemQuantity) ?? 0
-        let price = Double(itemPrice) ?? 0.0
+        let price = itemPrice
         let trimmedName = itemName.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let item = editingItem {
