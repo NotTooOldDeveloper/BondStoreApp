@@ -22,7 +22,11 @@ struct BarcodeScannerView: View {
     @Binding var dismissBoth: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    
+
+    // Date range for the current month
+    let startOfMonth: Date
+    let endOfMonth: Date
+
     @Query private var inventoryItems: [InventoryItem]
     let onAddDistributions: ([Distribution]) -> Void
 
@@ -89,7 +93,14 @@ struct BarcodeScannerView: View {
                 if let currentItem = currentScannedItem {
                     ScannedItemDetailView(
                         scannedItem: bindingFor(item: currentItem),
-                        onAdd: updateScannedItem
+                        onAdd: updateScannedItem,
+                        onCancel: {
+                            // When cancelling, remove the item that was added
+                            scannedItems.removeAll { $0.inventoryItem.id == currentItem.id }
+                            isShowingItemDetail = false
+                        },
+                        startOfMonth: startOfMonth,
+                        endOfMonth: endOfMonth
                     )
                 }
             }
@@ -116,7 +127,9 @@ struct BarcodeScannerView: View {
             isShowingItemDetail = true
         } else {
             // Add new scanned item and show modal
-            let newScannedItem = ScannedItem(inventoryItem: foundItem, quantity: 1, date: Date())
+            let today = Date()
+            let defaultDate = (today >= startOfMonth && today <= endOfMonth) ? today : startOfMonth
+            let newScannedItem = ScannedItem(inventoryItem: foundItem, quantity: 1, date: defaultDate)
             scannedItems.append(newScannedItem)
             currentScannedItem = foundItem
             isShowingItemDetail = true
@@ -160,13 +173,18 @@ struct BarcodeScannerView: View {
 struct ScannedItemDetailView: View {
     @Binding var scannedItem: ScannedItem
     var onAdd: (ScannedItem) -> Void
+    var onCancel: () -> Void // New property for the cancel action
+
+    let startOfMonth: Date
+    let endOfMonth: Date
 
     var body: some View {
         NavigationView {
             Form {
                 Text(scannedItem.inventoryItem.name)
                     .font(.headline)
-                DatePicker("Date", selection: $scannedItem.date, displayedComponents: .date)
+                // Constrain the DatePicker to the valid range
+                DatePicker("Date", selection: $scannedItem.date, in: startOfMonth...endOfMonth, displayedComponents: .date)
                 HStack {
                     Text("Quantity:")
                         .font(.body)
@@ -190,7 +208,7 @@ struct ScannedItemDetailView: View {
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        onAdd(scannedItem)
+                        onCancel() // Call the new cancel action
                     }
                 }
             }
@@ -256,11 +274,14 @@ class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDel
         }
 
         previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
+        // Inside the setupCaptureSession() function
         previewLayer.frame = view.layer.bounds
         previewLayer.videoGravity = .resizeAspectFill
         view.layer.addSublayer(previewLayer)
 
-        captureSession.startRunning()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.captureSession.startRunning()
+        }
     }
 
     func showPermissionDeniedAlert() {

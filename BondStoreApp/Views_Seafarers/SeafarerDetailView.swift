@@ -30,6 +30,28 @@ struct SeafarerDetailView: View {
 
     @Query(sort: \InventoryItem.name) private var inventoryItems: [InventoryItem]
 
+    private var startOfMonthDate: Date {
+        guard let monthID = seafarer.monthlyData?.monthID else { return .distantFuture }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        // By not setting a timezone, we let it use the user's local timezone, which is correct for UI.
+        return formatter.date(from: monthID) ?? .distantFuture
+    }
+
+    private var endOfMonthDate: Date {
+        // Use the local calendar to find the last day of the month correctly.
+        let startDate = startOfMonthDate // Assign directly, no 'guard let' needed.
+        guard let nextMonth = Calendar.current.date(byAdding: .month, value: 1, to: startDate),
+              let lastDay = Calendar.current.date(byAdding: .day, value: -1, to: nextMonth) else {
+            return .distantPast
+        }
+        return lastDay
+    }
+
+        private var availableItemsForMonth: [InventoryItem] {
+            inventoryItems.filter { $0.receivedDate <= endOfMonthDate }
+        }
+    
     init(seafarer: Seafarer) {
         self._seafarer = Bindable(wrappedValue: seafarer)
     }
@@ -162,7 +184,16 @@ struct SeafarerDetailView: View {
             ToolbarItem(placement: .bottomBar) {
                 HStack {
                     Spacer()
-                    Button(action: { showingAddDistribution = true }) {
+                    Button(action: {
+                        let today = Date()
+                        // Use today's date if it's within the valid month, otherwise use the first day.
+                        if today >= startOfMonthDate && today <= endOfMonthDate {
+                            selectedDate = today
+                        } else {
+                            selectedDate = startOfMonthDate
+                        }
+                        showingAddDistribution = true
+                    }) {
                         HStack {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 24))
@@ -198,7 +229,7 @@ struct SeafarerDetailView: View {
                     Section(header: Text("Select Item")) {
                         Picker("Item", selection: $selectedItem) {
                             Text("Select an item").tag(Optional<InventoryItem>(nil))
-                            ForEach(inventoryItems, id: \.id) { item in
+                            ForEach(availableItemsForMonth, id: \.id) { item in
                                 Text(item.name).tag(Optional(item))
                             }
                         }
@@ -206,7 +237,7 @@ struct SeafarerDetailView: View {
 
                     TextField("Quantity", text: $quantityString)
                         .keyboardType(.numberPad)
-                    DatePicker("Date", selection: $selectedDate, displayedComponents: .date)
+                    DatePicker("Date", selection: $selectedDate, in: startOfMonthDate...endOfMonthDate, displayedComponents: .date)
                 }
                 .navigationTitle("New Distribution")
                 .toolbar {
@@ -216,7 +247,7 @@ struct SeafarerDetailView: View {
                                 let selectedItem = selectedItem,
                                 let qty = Int(quantityString),
                                 qty > 0,
-                                getQuantity(for: selectedItem, onOrBefore: Date()) >= qty // Check calculated quantity
+                                getQuantity(for: selectedItem, onOrBefore: selectedDate) >= qty // Check quantity on the selected date
                             else {
                                 showInventoryAlert = true // Show an alert if not enough stock
                                 return
@@ -277,7 +308,10 @@ struct SeafarerDetailView: View {
                 }
                 .sheet(isPresented: $showingBarcodeScanner) {
                     BarcodeScannerView(
-                        dismissBoth: $showingAddDistribution
+                        dismissBoth: $showingAddDistribution,
+                        // Pass the date range properties
+                        startOfMonth: startOfMonthDate,
+                        endOfMonth: endOfMonthDate
                     ) { scannedDistributions in
                         for dist in scannedDistributions {
                             dist.seafarer = seafarer
@@ -301,7 +335,7 @@ struct SeafarerDetailView: View {
                                 .font(.headline)
                         }
                     }
-                    DatePicker(selection: $editedDate, displayedComponents: .date) {
+                    DatePicker(selection: $editedDate, in: startOfMonthDate...endOfMonthDate, displayedComponents: .date) {
                         Text("Date")
                             .font(.headline)
                     }

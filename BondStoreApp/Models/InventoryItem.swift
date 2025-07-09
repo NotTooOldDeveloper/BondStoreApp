@@ -36,23 +36,6 @@ class InventoryItem {
     }
 }
 
-//extension InventoryItem {
-//    func deepCopy() -> InventoryItem {
-//        let clone = InventoryItem(
-//            name: self.name,
-//            quantity: self.quantity,
-//            pricePerUnit: self.pricePerUnit,
-//            barcode: self.barcode,
-//            receivedDate: self.receivedDate
-//        )
-//        clone.originalItemID = self.originalItemID ?? self.id
-//        clone.supplies = self.supplies.map { $0.deepCopy(for: clone) }
-//        // If you ever deep-copy InventoryItem and need to copy distributions, you'd add:
-//        // clone.distributions = self.distributions.map { $0.deepCopy(for: clone) } // Assuming Distribution has a deepCopy
-//        return clone
-//    }
-//}
-
 extension InventoryItem: Equatable {
     static func == (lhs: InventoryItem, rhs: InventoryItem) -> Bool {
         lhs.id == rhs.id
