@@ -75,13 +75,27 @@ struct ItemFinderView: View {
 }
 
 struct InventoryListView: View {
+    
+    enum SheetMode: Identifiable {
+        case add
+        case edit(InventoryItem)
+
+        var id: String {
+            switch self {
+            case .add:
+                return "add"
+            case .edit(let item):
+                return item.id.uuidString
+            }
+        }
+    }
+    
     @EnvironmentObject var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \InventoryItem.name) private var inventoryItems: [InventoryItem]
     var monthID: String
     
-    @State private var showingAddEditSupply = false
-    @State private var editingItem: InventoryItem?
+    @State private var sheetMode: SheetMode?
     @State private var showingItemFinder = false
 
     @State private var itemName = ""
@@ -209,7 +223,12 @@ struct InventoryListView: View {
             } message: {
                 Text("This item has associated distributions or supplies and cannot be deleted. Please remove all related entries first.")
             }
-            .sheet(isPresented: $showingAddEditSupply) {
+            .sheet(item: $sheetMode) { mode in
+                let isEditing = {
+                    if case .edit = mode { return true }
+                    return false
+                }()
+
                 NavigationView {
                     Form {
                         Section(header: Text("Item Name")) {
@@ -228,7 +247,7 @@ struct InventoryListView: View {
                         }
 
                         // Only show Quantity and Date fields when ADDING a new item
-                        if editingItem == nil {
+                        if !isEditing {
                             Section(header: Text("Quantity Received")) {
                                 TextField("Enter quantity", text: $itemQuantity)
                                     .keyboardType(.numberPad)
@@ -247,17 +266,22 @@ struct InventoryListView: View {
                             }
                         }
                     }
-                    .navigationTitle(editingItem == nil ? "Add Item" : "Edit Item")
+                    .navigationTitle(isEditing ? "Edit Item" : "Add Item")
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Save") {
-                                saveItem()
+                                // Pass the item being edited to the save function
+                                var itemToEdit: InventoryItem?
+                                if case .edit(let item) = mode {
+                                    itemToEdit = item
+                                }
+                                saveItem(editingItem: itemToEdit)
                             }
                             .disabled(
                                 // If we are adding a new item, check all fields
-                                editingItem == nil ?
+                                !isEditing ?
                                 (itemName.isEmpty || Int(itemQuantity) == nil || Double(itemPrice) == nil) :
-                                    // If we are just editing, only check the name and price
+                                // If we are just editing, only check the name and price
                                 (itemName.isEmpty || Double(itemPrice) == nil)
                             )
                         }
@@ -269,14 +293,15 @@ struct InventoryListView: View {
                     }
                 }
                 .sheet(isPresented: $isShowingScanner) {
+                    // This nested sheet remains the same
                     BasicBarcodeScannerView { code in
                         itemBarcode = code
                         isShowingScanner = false
                     }
                 }
                 .sheet(isPresented: $showingItemFinder) {
+                    // This nested sheet also remains the same
                     ItemFinderView { selectedName in
-                        // When a name is selected, just fill in the name field.
                         self.itemName = selectedName
                     }
                 }
@@ -288,37 +313,34 @@ struct InventoryListView: View {
     }
 
     private func startAdding() {
-        editingItem = nil
+        // Reset fields and set the mode to .add
         itemName = ""
         itemQuantity = ""
         itemBarcode = ""
         itemPrice = ""
 
         let today = Date()
-        // Use today's date if it's within the valid month, otherwise default to the first day.
         if today >= startOfMonthDate && today <= endOfMonthDate {
             itemReceivedDate = today
         } else {
             itemReceivedDate = startOfMonthDate
         }
 
-        showingAddEditSupply = true
+        sheetMode = .add
     }
 
     private func startEditing(_ item: InventoryItem) {
-        editingItem = item
+        // Set fields from the item and set the mode to .edit
         itemName = item.name
         itemBarcode = item.barcode ?? ""
         itemPrice = String(format: "%.2f", item.pricePerUnit)
+        itemQuantity = "" // Not used in edit mode
+        itemReceivedDate = Date() // Not used in edit mode
 
-        // Quantity and date are no longer part of editing an item's details
-        itemQuantity = ""
-        itemReceivedDate = Date()
-
-        showingAddEditSupply = true
+        sheetMode = .edit(item)
     }
 
-    private func saveItem() {
+    private func saveItem(editingItem: InventoryItem?) {
         let newQty = Int(itemQuantity) ?? 0
         let price = Double(itemPrice) ?? 0.0
         let trimmedName = itemName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -360,13 +382,11 @@ struct InventoryListView: View {
         } catch {
             print("Failed to save context after item changes/supply: \(error)")
         }
-        editingItem = nil
-        showingAddEditSupply = false
+        sheetMode = nil
     }
 
     private func cancel() {
-        editingItem = nil
-        showingAddEditSupply = false
+        sheetMode = nil
         // No need to check if editingItem was nil, rollback does nothing if there are no changes.
         modelContext.rollback()
     }
