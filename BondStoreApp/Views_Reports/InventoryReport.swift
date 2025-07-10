@@ -88,16 +88,16 @@ struct InventoryReportView: View {
             }
             .padding(.bottom, 8)
 
-
             if isLoadingReport {
+                Spacer()
                 ProgressView("Generating Report...")
-                    .padding()
+                Spacer()
             } else if let errorMessage = errorMessage {
-                Text("Error: \(errorMessage)").foregroundColor(.red).padding()
+                ContentUnavailableView("Error", systemImage: "xmark.octagon", description: Text(errorMessage))
             } else if appState.selectedMonthID == nil {
-                Text("Please select a month to view the inventory report.").foregroundColor(.secondary).padding()
+                ContentUnavailableView("No Month Selected", systemImage: "calendar.badge.exclamationmark", description: Text("Please select a month to view the inventory report."))
             } else {
-                //======================== NEW SUMMARY GRID ========================
+                // --- STATIONARY CONTENT ---
                 VStack {
                     Text("Monthly Summary")
                         .font(.title2.weight(.bold))
@@ -105,7 +105,7 @@ struct InventoryReportView: View {
 
                     Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
                         GridRow {
-                            SummaryCard(title: "Opening Value", value: totalOpeningValue, color: .black)
+                            SummaryCard(title: "Opening Value", value: totalOpeningValue, color: .purple)
                             SummaryCard(title: "Supplied Value", value: totalSuppliedValue, color: .green, prefix: "+")
                         }
                         GridRow {
@@ -117,76 +117,72 @@ struct InventoryReportView: View {
                 .padding()
                 .background(Color(.systemGroupedBackground))
 
-                //======================== DETAILED LIST HEADER ========================
-                Text("Detailed List")
-                    .font(.title2.weight(.bold))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding([.horizontal, .top])
-                    .padding(.bottom, 4)
+                // --- SCROLLABLE CONTENT ---
+                ScrollView {
+                    Text("Detailed List")
+                        .font(.title2.weight(.bold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding([.horizontal, .top])
+                        .padding(.bottom, 4)
 
-                ScrollView(.horizontal, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        // The Header Row, now a Grid
-                        // Reverted to an HStack with specific widths for manual tuning
-                        HStack {
-                            Text("Item Name")
-                                .frame(width: 160, alignment: .leading)
-                            Text("Open")
-                                .frame(width: 50, alignment: .center)
-                            Text("Close")
-                                .frame(width: 50, alignment: .center)
-                            Text("Total Value")
-                                .frame(width: 100, alignment: .center)
-                        }
-                        .font(.headline)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 10)
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack {
+                                Text("Item Name")
+                                    .frame(width: 160, alignment: .leading)
+                                Text("Open")
+                                    .frame(width: 50, alignment: .center)
+                                Text("Close")
+                                    .frame(width: 50, alignment: .center)
+                                Text("Total Value")
+                                    .frame(width: 100, alignment: .center)
+                            }
+                            .font(.headline)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 10)
 
-                        Divider()
+                            Divider()
 
-                        //======================== EXPANDABLE LIST ========================
-                        ForEach(finalReportItems.sorted(by: { $0.name < $1.name })) { item in
-                            VStack(spacing: 0) {
-                                // Reverted to an HStack with specific widths for manual tuning
-                                HStack {
-                                    Image(systemName: expandedReportItemID == item.id ? "chevron.down" : "chevron.right")
-                                        .font(.caption.weight(.bold))
-                                    Text(item.name)
-                                        .lineLimit(1)
-                                        .frame(width: 140, alignment: .leading) // 140 to account for chevron
-                                    Text("\(item.openingStock)")
-                                        .frame(width: 50, alignment: .center)
-                                    Text("\(item.closingStock)")
-                                        .frame(width: 50, alignment: .center)
-                                    Text(item.totalValue, format: .currency(code: "EUR"))
-                                        .frame(width: 100, alignment: .center)
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(expandedReportItemID == item.id ? Color.blue.opacity(0.1) : Color.clear)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                        if expandedReportItemID == item.id {
-                                            expandedReportItemID = nil // Collapse
-                                        } else {
-                                            expandedReportItemID = item.id // Expand
+                            ForEach(finalReportItems.sorted(by: { $0.name < $1.name })) { item in
+                                VStack(spacing: 0) {
+                                    HStack {
+                                        Image(systemName: expandedReportItemID == item.id ? "chevron.down" : "chevron.right")
+                                            .font(.caption.weight(.bold))
+                                        Text(item.name)
+                                            .lineLimit(1)
+                                            .frame(width: 140, alignment: .leading)
+                                        Text("\(item.openingStock)")
+                                            .frame(width: 50, alignment: .center)
+                                        Text("\(item.closingStock)")
+                                            .frame(width: 50, alignment: .center)
+                                        Text(item.totalValue, format: .currency(code: "USD"))
+                                            .frame(width: 100, alignment: .center)
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(expandedReportItemID == item.id ? Color.blue.opacity(0.1) : Color.clear)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                            if expandedReportItemID == item.id {
+                                                expandedReportItemID = nil
+                                            } else {
+                                                expandedReportItemID = item.id
+                                            }
                                         }
                                     }
-                                }
 
-                                // Expanded Detail View
-                                if expandedReportItemID == item.id {
-                                    ReportDetailRow(item: item)
-                                        .padding(.leading, 30) // Indent the detail view
+                                    if expandedReportItemID == item.id {
+                                        ReportDetailRow(item: item)
+                                            .padding(.leading, 30)
+                                    }
                                 }
+                                Divider()
                             }
-                            Divider()
                         }
                     }
                 }
             }
-            Spacer()
         }
         .navigationTitle("Inventory – \(formattedMonthName(from: selectedMonthDate))")
         .onAppear { generateReport() }
@@ -395,7 +391,7 @@ struct SummaryCard: View {
             Text(title)
                 .font(.caption.weight(.bold))
                 .foregroundColor(.secondary)
-            Text(prefix + (value.formatted(.currency(code: "EUR"))))
+            Text(prefix + (value.formatted(.currency(code: "USD"))))
                 .font(.title2.weight(.semibold))
                 .foregroundColor(color)
         }
@@ -417,7 +413,7 @@ struct ReportDetailRow: View {
                 Text("Price/Item:").font(.headline)
                 EmptyView()
                 EmptyView()
-                Text(item.pricePerItem, format: .currency(code: "EUR"))
+                Text(item.pricePerItem, format: .currency(code: "USD"))
                     .gridColumnAlignment(.trailing)
             }
             // --- Opening Row ---
@@ -426,7 +422,7 @@ struct ReportDetailRow: View {
                 EmptyView() // Spacer for the date column
                 Text("\(item.openingStock) units")
                     .gridColumnAlignment(.trailing)
-                Text(item.openingValue, format: .currency(code: "EUR"))
+                Text(item.openingValue, format: .currency(code: "USD"))
                     .gridColumnAlignment(.trailing)
             }
 
@@ -442,7 +438,7 @@ struct ReportDetailRow: View {
                         Text("\(supply.date, style: .date):")
                         Text("\(supply.quantity) units")
                             .gridColumnAlignment(.trailing)
-                        Text("+\(Double(supply.quantity) * item.pricePerItem, format: .currency(code: "EUR"))")
+                        Text("+\(Double(supply.quantity) * item.pricePerItem, format: .currency(code: "USD"))")
                             .foregroundColor(.green)
                             .gridColumnAlignment(.trailing)
                     }
@@ -457,7 +453,7 @@ struct ReportDetailRow: View {
                     EmptyView() // Spacer for the date column
                     Text("\(item.distributedStock) units")
                         .gridColumnAlignment(.trailing)
-                    Text("-\(item.distributedValue, format: .currency(code: "EUR"))")
+                    Text("-\(item.distributedValue, format: .currency(code: "USD"))")
                         .foregroundColor(.red)
                         .gridColumnAlignment(.trailing)
                 }
@@ -470,7 +466,7 @@ struct ReportDetailRow: View {
                 EmptyView() // Spacer for the date column
                 Text("\(item.closingStock) units")
                     .gridColumnAlignment(.trailing)
-                Text(item.totalValue, format: .currency(code: "EUR"))
+                Text(item.totalValue, format: .currency(code: "USD"))
                     .gridColumnAlignment(.trailing)
                     .foregroundColor(.blue)
             }

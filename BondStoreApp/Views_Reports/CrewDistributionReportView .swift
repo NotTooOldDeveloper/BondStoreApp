@@ -18,6 +18,14 @@ struct CrewDistributionReportView: View {
     var totalSpentAllSeafarers: Double {
         seafarersWithDistributions.reduce(0) { $0 + $1.totalSpent }
     }
+
+    var totalSpentCrew: Double {
+        seafarersWithDistributions.filter { !$0.isRepresentative }.reduce(0) { $0 + $1.totalSpent }
+    }
+
+    var totalSpentRepresentatives: Double {
+        seafarersWithDistributions.filter { $0.isRepresentative }.reduce(0) { $0 + $1.totalSpent }
+    }
     private var selectedMonthDate: Date? {
         guard let monthID = appState.selectedMonthID else { return nil }
         let formatter = DateFormatter()
@@ -92,22 +100,38 @@ struct CrewDistributionReportView: View {
             .listStyle(PlainListStyle())
             .frame(maxHeight: .infinity)
 
+            // The RoundedRectangle and its overlay at the end of the VStack
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color.blue.opacity(0.3))
                 .overlay(
-                    HStack {
-                        Text("Total Spent")
-                            .font(.title3.bold())
-                            .foregroundColor(Color("Name1"))
-                        Spacer()
-                        Text("€\(totalSpentAllSeafarers, specifier: "%.2f")")
-                            .font(.title3.bold())
-                            .foregroundColor(Color("Sum"))
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text("Total Spent")
+                                .font(.title2.bold())
+                            Spacer()
+                            Text(totalSpentAllSeafarers, format: .currency(code: "USD"))
+                                .font(.title2.bold())
+                                .foregroundColor(Color("Sum"))
+                        }
+
+                        Divider()
+
+                        HStack {
+                            Text("Crew:")
+                                .font(.headline)
+                            Text(totalSpentCrew, format: .currency(code: "USD"))
+                                .font(.headline.weight(.regular))
+                            Spacer()
+                            Text("Reps:")
+                                .font(.headline)
+                            Text(totalSpentRepresentatives, format: .currency(code: "USD"))
+                                .font(.headline.weight(.regular))
+                        }
                     }
-                    .padding(.horizontal)
+                    .padding()
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
+                .frame(height: 100) // Increased height for new content
                 .padding(.horizontal)
                 .padding(.bottom, 35)
         }

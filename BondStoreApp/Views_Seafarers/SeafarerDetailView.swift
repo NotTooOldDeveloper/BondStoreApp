@@ -195,15 +195,22 @@ struct SeafarerDetailView: View {
             ToolbarItem(placement: .bottomBar) {
                 HStack {
                     Spacer()
+                    // Inside the .toolbar, in the Button's action closure
                     Button(action: {
+                        // Reset fields for a fresh form
+                        self.selectedItem = nil
+                        self.quantityString = ""
+
+                        // Set default date
                         let today = Date()
-                        // Use today's date if it's within the valid month, otherwise use the first day.
                         if today >= startOfMonthDate && today <= endOfMonthDate {
-                            selectedDate = today
+                            self.selectedDate = today
                         } else {
-                            selectedDate = startOfMonthDate
+                            self.selectedDate = startOfMonthDate
                         }
-                        showingAddDistribution = true
+
+                        // Show the sheet
+                        self.showingAddDistribution = true
                     }) {
                         HStack {
                             Image(systemName: "plus.circle.fill")
