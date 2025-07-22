@@ -146,17 +146,27 @@ struct CrewDistributionReportView: View {
         }
     }
     private func exportReportToCSV() -> URL? {
-        // CSV Header
-        var csvString = "Seafarer ID,Seafarer Name,Date,Item Name,Quantity,Unit Price,Total Price\n"
+        // --- MODIFIED: Added new headers for the extra columns ---
+        var csvString = "Seafarer ID,Seafarer Name,Date,Item Name,Quantity,Unit Price,Total Price,Formatted Name,Item (Repeated),Quantity (Repeated)\n"
 
         for seafarer in seafarersWithDistributions.sorted(by: { $0.displayID < $1.displayID }) {
             for dist in seafarer.distributions.sorted(by: { $0.date < $1.date }) {
                 let totalPrice = Double(dist.quantity) * self.priceWithTax(for: seafarer, basePrice: dist.unitPrice)
-                let line = "\(seafarer.displayID),\"\(seafarer.name)\",\(dist.date.formatted(date: .numeric, time: .omitted)),\"\(dist.itemName)\",\(dist.quantity),\(String(format: "%.2f", dist.unitPrice)),\(String(format: "%.2f", totalPrice))\n"
+                
+                // --- MODIFIED: Added the new data fields to the end of the line ---
+                
+                // 1. Create the formatted name string
+                // NOTE: This assumes your 'seafarer' object has a 'rank' property. Change if needed.
+                let formattedName = "\(seafarer.displayID). \(seafarer.name) - \(seafarer.rank)"
+                
+                // 2. Build the full line with all original and new columns
+                let line = "\(seafarer.displayID),\"\(seafarer.name)\",\(dist.date.formatted(date: .numeric, time: .omitted)),\"\(dist.itemName)\",\(dist.quantity),\(String(format: "%.2f", dist.unitPrice)),\(String(format: "%.2f", totalPrice)),\"\(formattedName)\",\"\(dist.itemName)\",\(dist.quantity)\n"
+                
                 csvString.append(line)
             }
         }
 
+        // --- The rest of the function remains the same ---
         let tempDir = FileManager.default.temporaryDirectory
         let fileURL = tempDir.appendingPathComponent("CrewDistributionReport.csv")
 

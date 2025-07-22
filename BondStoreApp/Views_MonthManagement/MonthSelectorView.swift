@@ -135,6 +135,15 @@ struct MonthSelectorView: View {
             }
             
             .navigationTitle("Select Month")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
+            }
             .sheet(isPresented: $showingMonthPicker) {
                 MonthYearPickerView { month in
                     showingMonthPicker = false
